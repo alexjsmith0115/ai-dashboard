@@ -1,0 +1,339 @@
+/* Statistics + the before/after analysis model shared by both dashboards. */
+window.AID = window.AID || {};
+(function (AID) {
+  'use strict';
+
+  const MIN_MONTHS_PER_SIDE = 2; // a developer needs this many months before AND after to count
+  const MIN_GROUP_DEVS = 5;      // groups smaller than this are flagged as low sample
+  const OTHER = 'Other';
+
+  // ---------- Basic stats ----------
+  const isNum = (x) => x != null && isFinite(x);
+  function mean(a) { let s = 0, n = 0; for (const x of a) if (isNum(x)) { s += x; n++; } return n ? s / n : null; }
+  function sum(a) { let s = 0, n = 0; for (const x of a) if (isNum(x)) { s += x; n++; } return n ? s : null; }
+  function median(a) {
+    const b = a.filter(isNum).sort((x, y) => x - y);
+    if (!b.length) return null;
+    const h = b.length >> 1;
+    return b.length % 2 ? b[h] : (b[h - 1] + b[h]) / 2;
+  }
+  function sd(a) {
+    const b = a.filter(isNum);
+    if (b.length < 2) return null;
+    const m = mean(b);
+    return Math.sqrt(b.reduce((s, x) => s + (x - m) * (x - m), 0) / (b.length - 1));
+  }
+  // Two-sided 95% t critical values.
+  const T95 = [[1, 12.71], [2, 4.30], [3, 3.18], [4, 2.78], [5, 2.57], [6, 2.45], [7, 2.36], [8, 2.31], [9, 2.26], [10, 2.23], [12, 2.18], [15, 2.13], [20, 2.09], [25, 2.06], [30, 2.04], [40, 2.02], [60, 2.00], [120, 1.98]];
+  function tCrit(df) {
+    if (df < 1) return Infinity;
+    let v = 1.96;
+    for (let i = T95.length - 1; i >= 0; i--) if (df >= T95[i][0]) { v = T95[i][1]; break; }
+    return df > 120 ? 1.96 : v;
+  }
+  function pearson(x, y) {
+    const n = x.length;
+    if (n < 3) return null;
+    const mx = mean(x), my = mean(y);
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < n; i++) { const dx = x[i] - mx, dy = y[i] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; }
+    return sxx && syy ? sxy / Math.sqrt(sxx * syy) : null;
+  }
+  function ranks(a) {
+    const idx = a.map((v, i) => [v, i]).sort((p, q) => p[0] - q[0]);
+    const r = new Array(a.length);
+    for (let i = 0; i < idx.length;) {
+      let j = i;
+      while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++;
+      const avg = (i + j) / 2 + 1;
+      for (let k = i; k <= j; k++) r[idx[k][1]] = avg;
+      i = j + 1;
+    }
+    return r;
+  }
+  function correlate(x, y, method) {
+    const px = [], py = [];
+    for (let i = 0; i < x.length; i++) if (isNum(x[i]) && isNum(y[i])) { px.push(x[i]); py.push(y[i]); }
+    if (px.length < 5) return { r: null, n: px.length };
+    return { r: method === 'pearson' ? pearson(px, py) : pearson(ranks(px), ranks(py)), n: px.length };
+  }
+  function linearFit(x, y) {
+    const mx = mean(x), my = mean(y);
+    let sxy = 0, sxx = 0;
+    for (let i = 0; i < x.length; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; }
+    const slope = sxx ? sxy / sxx : 0;
+    return { slope, intercept: my - slope * mx };
+  }
+
+  // ---------- Context: everything derived from dataset + filters + settings ----------
+  function buildContext(ds, state) {
+    const s = state.settings, f = state.filters;
+    const thr = s.activeDays, hi = s.highDays;
+
+    // Per-developer adoption month: first month at or above the active-days threshold (unfiltered data).
+    for (const d of ds.devs) {
+      d.adoptIdx = null;
+      for (const r of d.rows) if (r.v.activeDays >= thr) { d.adoptIdx = r.mi; break; }
+    }
+    // Suggested company rollout: first month where >= 20% of developers with data are active.
+    let autoRollout = null;
+    for (const mi of ds.months) {
+      let n = 0, a = 0;
+      for (const r of ds.rows) if (r.mi === mi && r.dev.isIC) { n++; if (r.v.activeDays >= thr) a++; }
+      if (n && a / n >= 0.2) { autoRollout = mi; break; }
+    }
+    if (autoRollout == null) autoRollout = ds.months[Math.floor(ds.months.length / 2)];
+    const rolloutIdx = s.rollout ? AID.data.monthIndex(s.rollout) : autoRollout;
+    const medianAdopt = (() => { const m = median(ds.devs.map((d) => d.adoptIdx)); return m == null ? rolloutIdx : Math.round(m); })();
+
+    const fromIdx = f.from ? AID.data.monthIndex(f.from) : ds.months[0];
+    const toIdx = f.to ? AID.data.monthIndex(f.to) : ds.months[ds.months.length - 1];
+    const months = ds.months.filter((m) => m >= fromIdx && m <= toIdx);
+
+    const devs = ds.devs.filter((d) => d.rows.length
+      && (!f.org || d.org === f.org) && (!f.domain || d.domain === f.domain)
+      && (!f.team || d.team === f.team) && (!f.level || d.level === f.level)
+      && (!f.icOnly || d.isIC));
+
+    const ramp = s.ramp || 0;
+    const perDev = s.mode === 'perdev';
+    const splitOf = (d) => (perDev ? (d.adoptIdx != null ? d.adoptIdx : medianAdopt) : rolloutIdx);
+    const phaseOf = (r) => {
+      const rel = r.mi - splitOf(r.dev);
+      return rel < 0 ? 'before' : rel >= ramp ? 'after' : null;
+    };
+
+    const rowsCache = new Map();
+    const rowsOf = (d) => {
+      let rs = rowsCache.get(d);
+      if (!rs) { rs = d.rows.filter((r) => r.mi >= fromIdx && r.mi <= toIdx); rowsCache.set(d, rs); }
+      return rs;
+    };
+
+    const tierCache = new Map();
+    const TIER_LOW = 'Low (<' + thr + ' d/mo)', TIER_MED = 'Medium (' + thr + '–' + (hi - 1) + ')', TIER_HIGH = 'High (' + hi + '+ d/mo)';
+    const TIERS = [TIER_LOW, TIER_MED, TIER_HIGH];
+    const usageAfter = (d) => {
+      const after = rowsOf(d).filter((r) => phaseOf(r) === 'after');
+      return mean((after.length ? after : rowsOf(d)).map((r) => r.v.activeDays));
+    };
+    const tierOf = (d) => {
+      if (tierCache.has(d)) return tierCache.get(d);
+      const u = usageAfter(d);
+      const t = u == null ? 'No data' : u >= hi ? TIER_HIGH : u >= thr ? TIER_MED : TIER_LOW;
+      tierCache.set(d, t);
+      return t;
+    };
+    const groupOf = (d, key) => (key === 'tier' ? tierOf(d) : key === 'all' ? 'All developers' : d[key]);
+
+    const phaseCache = new Map();
+    function phaseMeans(d, key) {
+      const ck = key + '|' + d.id;
+      if (phaseCache.has(ck)) return phaseCache.get(ck);
+      const b = [], a = [];
+      for (const r of rowsOf(d)) {
+        const v = r.v[key];
+        if (!isNum(v)) continue;
+        const p = phaseOf(r);
+        if (p === 'before') b.push(v); else if (p === 'after') a.push(v);
+      }
+      const res = { b: mean(b), a: mean(a), nb: b.length, na: a.length };
+      phaseCache.set(ck, res);
+      return res;
+    }
+
+    // Paired before/after comparison across developers. Each developer is compared with their own baseline.
+    function compare(key, devList) {
+      const list = devList || devs;
+      const bs = [], as = [], diffs = [];
+      for (const d of list) {
+        const p = phaseMeans(d, key);
+        if (p.nb >= MIN_MONTHS_PER_SIDE && p.na >= MIN_MONTHS_PER_SIDE) { bs.push(p.b); as.push(p.a); diffs.push(p.a - p.b); }
+      }
+      const n = diffs.length;
+      const meta = AID.M[key] || {};
+      const res = { key, n, before: mean(bs), after: mean(as), status: 'nodata' };
+      if (n < 2 || !res.before) return res;
+      const md = mean(diffs), se = sd(diffs) / Math.sqrt(n), h = tCrit(n - 1) * se;
+      const base = Math.abs(res.before);
+      Object.assign(res, { diff: md, pct: md / base, lo: (md - h) / base, hi: (md + h) / base });
+      // Usage that starts near zero (most Cursor metrics before rollout) makes % change meaningless.
+      res.fromZero = meta.source === 'Cursor' && base < 0.1 * Math.abs(res.after);
+      const sig = md - h > 0 || md + h < 0;
+      res.sig = sig;
+      const good = meta.better === 'down' ? md < 0 : md > 0;
+      res.good = good;
+      res.status = !sig ? 'flat' : meta.better === 'neutral' ? (md > 0 ? 'up' : 'down') : good ? 'improved' : 'worse';
+      // "goodness" score: positive = better, regardless of metric direction
+      res.score = meta.better === 'down' ? -res.pct : res.pct;
+      return res;
+    }
+
+    function groupValues(key, devList) {
+      const counts = new Map();
+      for (const d of devList || devs) { const g = groupOf(d, key); counts.set(g, (counts.get(g) || 0) + 1); }
+      return counts;
+    }
+
+    // Share of a set of developers' after-period months at or above the active threshold.
+    function adoptionRate(devList) {
+      let n = 0, a = 0;
+      for (const d of devList) for (const r of rowsOf(d)) if (phaseOf(r) === 'after') { n++; if (r.v.activeDays >= thr) a++; }
+      return n ? a / n : null;
+    }
+
+    function compareByGroup(metric, groupKey) {
+      const byG = new Map();
+      for (const d of devs) {
+        const g = groupOf(d, groupKey);
+        if (!byG.has(g)) byG.set(g, []);
+        byG.get(g).push(d);
+      }
+      const out = [];
+      for (const [g, list] of byG) {
+        const c = compare(metric, list);
+        const sample = list[0];
+        out.push(Object.assign(c, {
+          group: g, devCount: list.length, adoption: adoptionRate(list),
+          avgActiveDays: mean(list.map(usageAfter)), lowSample: c.n < MIN_GROUP_DEVS,
+          parent: groupKey === 'team' ? sample.domain : groupKey === 'domain' ? sample.org : '',
+          manager: groupKey === 'team' ? sample.manager : '',
+        }));
+      }
+      return out;
+    }
+
+    // Time series. xMode 'calendar' = month; 'relative' = months since the developer's split month.
+    function series(metric, opts) {
+      const o = Object.assign({ groupKey: 'all', agg: 'mean', xMode: 'calendar', maxSeries: 8, relRange: 12 }, opts);
+      const xs = o.xMode === 'relative' ? range(-o.relRange, o.relRange) : months.slice();
+      const xPos = new Map(xs.map((x, i) => [x, i]));
+      const counts = groupValues(o.groupKey);
+      let names = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
+      let fold = null;
+      if (o.groupKey === 'tier') names = TIERS.filter((t) => counts.has(t)).concat(names.filter((t) => !TIERS.includes(t)));
+      else if (names.length > o.maxSeries) { fold = new Set(names.slice(o.maxSeries - 1)); names = names.slice(0, o.maxSeries - 1).concat([OTHER]); }
+      const buckets = new Map(names.map((n) => [n, xs.map(() => [])]));
+      for (const d of devs) {
+        let g = groupOf(d, o.groupKey);
+        if (fold && fold.has(g)) g = OTHER;
+        const b = buckets.get(g);
+        if (!b) continue;
+        const split = splitOf(d);
+        for (const r of rowsOf(d)) {
+          const x = o.xMode === 'relative' ? r.mi - split : r.mi;
+          const i = xPos.get(x);
+          if (i == null) continue;
+          const v = r.v[metric];
+          if (isNum(v)) b[i].push(v);
+        }
+      }
+      const agg = o.agg === 'sum' ? sum : o.agg === 'median' ? median : mean;
+      const minN = o.xMode === 'relative' ? 3 : 1;
+      const out = names.map((n) => {
+        const b = buckets.get(n);
+        return { name: n, values: b.map((a) => (a.length >= minN ? agg(a) : null)), counts: b.map((a) => a.length), isOther: n === OTHER };
+      }).filter((s) => s.counts.some((c) => c > 0));
+      return { xs, labels: xs.map((x) => (o.xMode === 'relative' ? (x > 0 ? '+' + x : String(x)) : AID.data.monthLabel(x))), series: out, folded: fold ? fold.size : 0 };
+    }
+
+    function adoptionSeries() {
+      const rows = months.map(() => ({ n: 0, any: 0, act: 0, high: 0 }));
+      const pos = new Map(months.map((m, i) => [m, i]));
+      for (const d of devs) for (const r of rowsOf(d)) {
+        const c = rows[pos.get(r.mi)];
+        if (!c) continue;
+        c.n++;
+        const a = r.v.activeDays || 0;
+        if (a >= 1) c.any++;
+        if (a >= thr) c.act++;
+        if (a >= hi) c.high++;
+      }
+      return {
+        xs: months, labels: months.map((m) => AID.data.monthLabel(m)),
+        any: rows.map((c) => (c.n ? c.any / c.n : null)),
+        active: rows.map((c) => (c.n ? c.act / c.n : null)),
+        high: rows.map((c) => (c.n ? c.high / c.n : null)),
+        n: rows.map((c) => c.n),
+      };
+    }
+
+    // One value per developer: mean over the date range (level 'dev'), or after−before change (level 'change').
+    function devValues(key, level) {
+      return devs.map((d) => {
+        if (level === 'change') {
+          const p = phaseMeans(d, key);
+          return p.nb >= MIN_MONTHS_PER_SIDE && p.na >= MIN_MONTHS_PER_SIDE ? p.a - p.b : null;
+        }
+        return mean(rowsOf(d).map((r) => r.v[key]));
+      });
+    }
+
+    function pointsFor(xKey, yKey, level) {
+      if (level === 'devmonth') {
+        const pts = [];
+        for (const d of devs) for (const r of rowsOf(d)) {
+          const x = r.v[xKey], y = r.v[yKey];
+          if (isNum(x) && isNum(y)) pts.push({ x, y, dev: d, month: r.mi });
+        }
+        return pts;
+      }
+      const xs = devValues(xKey, level), ys = devValues(yKey, level);
+      const pts = [];
+      devs.forEach((d, i) => { if (isNum(xs[i]) && isNum(ys[i])) pts.push({ x: xs[i], y: ys[i], dev: d }); });
+      return pts;
+    }
+
+    function corrMatrix(keys, level, method) {
+      let cols;
+      if (level === 'devmonth') {
+        const all = [];
+        for (const d of devs) for (const r of rowsOf(d)) all.push(r);
+        cols = keys.map((k) => all.map((r) => r.v[k]));
+      } else {
+        cols = keys.map((k) => devValues(k, level));
+      }
+      return keys.map((_, i) => keys.map((__, j) => (i === j ? { r: 1, n: null } : correlate(cols[i], cols[j], method))));
+    }
+
+    // Mean of a metric per bucket of monthly Cursor active days (dev-month level).
+    function doseResponse(metric, afterOnly) {
+      const B = [
+        { label: '0 days', lo: 0, hi: 0 }, { label: '1–4', lo: 1, hi: 4 }, { label: '5–9', lo: 5, hi: 9 },
+        { label: '10–14', lo: 10, hi: 14 }, { label: '15+', lo: 15, hi: Infinity },
+      ];
+      const vals = B.map(() => []), devSets = B.map(() => new Set());
+      for (const d of devs) for (const r of rowsOf(d)) {
+        if (afterOnly && phaseOf(r) !== 'after') continue;
+        const a = r.v.activeDays || 0, v = r.v[metric];
+        if (!isNum(v)) continue;
+        const i = B.findIndex((b) => a >= b.lo && a <= b.hi);
+        vals[i].push(v); devSets[i].add(d);
+      }
+      return B.map((b, i) => ({ label: b.label, mean: mean(vals[i]), median: median(vals[i]), n: vals[i].length, devs: devSets[i].size }));
+    }
+
+    function devSummary(d) {
+      return {
+        dev: d, tier: tierOf(d), usage: usageAfter(d), adoptIdx: d.adoptIdx,
+        months: rowsOf(d).length,
+        m: (k) => phaseMeans(d, k),
+      };
+    }
+
+    // Before/after windows for the method note.
+    const allRowsInRange = devs.flatMap(rowsOf);
+    const windowOf = (p) => { const m = allRowsInRange.filter((r) => phaseOf(r) === p).map((r) => r.mi); return m.length ? [Math.min(...m), Math.max(...m)] : null; };
+
+    return {
+      ds, state, devs, months, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS,
+      splitOf, phaseOf, rowsOf, tierOf, groupOf, usageAfter, phaseMeans, compare, compareByGroup, groupValues,
+      adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,
+      beforeWindow: windowOf('before'), afterWindow: windowOf('after'),
+    };
+  }
+
+  function range(a, b) { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; }
+
+  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, OTHER };
+})(window.AID);

@@ -1,0 +1,3 @@
+.DS_Store
+# Keep real exports here; never commit them.
+data/

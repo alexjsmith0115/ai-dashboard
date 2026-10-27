@@ -51,6 +51,13 @@ Blank cells:
 
 Adoption month = the developer's first month with the active-days threshold. Each adopter has their own adoption month, so the model handles a staggered rollout. The month effects remove seasonality and company-wide changes. Developer effects remove fixed differences in skill, level, and team. The model uses every developer in the date range, and the org, domain, team, and level filters only select which adopters to average. A month needs 10+ developers who have not adopted yet. If a month has fewer, its adopter months are left out.
 
+**Comparison group** (Settings: *AI effect comparison group*). These are the developer-months that set the company-wide change in each month:
+- *All developers without AI yet* (default): non-adopters, and adopters in the months before they adopt.
+- *Adopters before adoption only*: non-adopters are not used. When almost everyone has adopted, the late months have too few comparison developers and are left out.
+- *Non-adopters only*: each adopter's own level still comes from their months before adoption.
+
+The verdict shows the headline effect with all three groups. If the results are within 3 pts, the choice of group does not drive the result.
+
 **Event study.** The chart shows the effect for each month from 6 months before adoption to 12 months after. Before adoption the points should be near 0 with no trend. A trend there means adopters were already improving before AI, and the effect is less reliable.
 
 **Before / after split** (Explore and the *Lift* view; Settings):
@@ -64,9 +71,9 @@ Adoption month = the developer's first month with the active-days threshold. Eac
 
 **AI usage tiers.** Each developer's tier comes from their average Cursor active days per month in the after period: Non-adopter (< 1), Light (1–4), Medium (5–11), Heavy (12+). You can change the Medium and Heavy thresholds in Settings. The main evidence that AI causes a change is a comparison of tiers over the same months. If heavy users improved more than non-adopters, seasonality and org-wide changes cannot explain the gap.
 
-**Lift.** Lift = a tier's improvement minus the improvement of non-adopters in the same group (for example, heavy-user SDE2s vs non-adopter SDE2s), in percentage points. Positive = better. The 95% CI uses the standard errors of both cells. Cells with fewer than 5 developers are hidden.
+**Lift.** Lift = a tier's improvement minus the improvement of non-adopters in the same group (for example, heavy-user SDE2s vs non-adopter SDE2s), in percentage points. Positive = better. The 95% CI uses the standard errors of both cells. Cells with fewer developers than the *Minimum developers per group* setting (default 5) are hidden.
 
-**Groups.** Groups with fewer than 5 developers who have before/after data are flagged "Small sample". The executive charts do not rank them.
+**Groups.** Groups with fewer developers who have before/after data than the *Minimum developers per group* setting (default 5) are flagged "Small sample". The executive charts do not rank them.
 
 ## Dashboards
 

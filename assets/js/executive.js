@@ -102,11 +102,11 @@ window.AID = window.AID || {};
     left.appendChild(el('p.method-note', {
       text: 'Method: difference-in-differences. Each adopter is split at their own adoption month (first month with ' + ctx.thr + '+ Cursor active days). ' +
         'Their results after adoption are compared with the value expected from their own level before adoption plus the company-wide change in the same month. ' +
-        'The company-wide change comes from ' + fit.controlDevs + ' non-adopters and from adopters who have not adopted yet. ' +
+        'The company-wide change comes from ' + controlText(fit) + '. ' +
         head.n + ' adopters have ' + AID.analysis.MIN_MONTHS_PER_SIDE + '+ months on both sides.' +
         (ctx.ramp ? ' ' + ctx.ramp + ' ramp-up month(s) after adoption excluded.' : '') +
         (ctx.onboarding.months && ctx.onboarding.newHires ? ' The first ' + ctx.onboarding.months + ' month(s) of ' + ctx.onboarding.newHires + ' new hires are excluded as onboarding.' : '') +
-        (fit.dropped ? ' ' + fit.dropped + ' adopter-months are left out because fewer than ' + AID.analysis.MIN_CONTROL_DEVS + ' developers had not adopted yet in that month.' : ''),
+        (fit.dropped ? ' ' + fit.dropped + ' adopter-months are left out because their month has fewer than ' + AID.analysis.MIN_CONTROL_DEVS + ' comparison developers.' : ''),
     }));
 
     // Right side: change by AI usage tier
@@ -115,8 +115,8 @@ window.AID = window.AID || {};
     const rows = tiers.map((x, i) => {
       if (i === 0) {
         return el('div.score-row', { style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
-          el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.devCount + ' developers · the comparison group' })),
-          el('div.val', { text: '0%', style: { color: 'var(--muted)' } }));
+          el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.devCount + ' developers · ' + (ctx.control === 'notyet' ? 'not used' : ctx.control === 'never' ? 'the comparison group' : 'part of the comparison group') })),
+          el('div.val', { text: '—', style: { color: 'var(--muted)' } }));
       }
       const w = x.score != null ? (Math.abs(x.score) / maxAbs) * 100 : 0;
       const bar = el('div', { style: { height: '8px', borderRadius: '4px', width: Math.max(2, w) + '%', background: t.tiers[i], marginTop: '5px' } });
@@ -127,9 +127,38 @@ window.AID = window.AID || {};
     const right = el('div.verdict-side',
       el('p.verdict-q', { text: 'AI effect on ' + meta.short + ' by AI usage level' }),
       el('div.scorecard', rows),
-      el('p.method-note', { text: 'Usage level = average Cursor active days per month in the after period.' }));
+      el('p.method-note', { text: 'Usage level = average Cursor active days per month in the after period.' }),
+      robustness(ctx, metric));
 
     return el('section.card.verdict', left, right);
+  }
+
+  const CONTROL_LABELS = { all: 'All developers without AI yet', notyet: 'Adopters before adoption only', never: 'Non-adopters only' };
+  function controlText(fit) {
+    if (fit.control === 'notyet') return fit.notYet + ' adopters, in the months before they adopted (non-adopters are not used)';
+    if (fit.control === 'never') return fit.nonAdopters + ' non-adopters only';
+    return fit.nonAdopters + ' non-adopters and from adopters in the months before they adopted';
+  }
+
+  // Robustness check: the headline effect with each comparison group. If they agree, the choice of group does not drive the result.
+  function robustness(ctx, metric) {
+    const res = ctx.CONTROLS.map((c) => ctx.did(metric, null, c));
+    const ok = res.filter((r) => r.pct != null);
+    const spread = ok.length >= 2 ? Math.max(...ok.map((r) => r.score)) - Math.min(...ok.map((r) => r.score)) : null;
+    const rows = res.map((r) => el('div.robust-row' + (r.control === ctx.control ? '.current' : ''),
+      el('span', { text: CONTROL_LABELS[r.control] + (r.control === ctx.control ? ' (in use)' : '') }),
+      el('span.robust-ci', { text: r.lo != null ? F.pct(r.lo, 0) + ' to ' + F.pct(r.hi, 0) : '' }),
+      el('strong', { text: r.pct != null ? F.pct(r.pct) : 'n/a' })));
+    let verdict = 'Not enough data to compare.';
+    if (spread != null) {
+      verdict = spread <= 0.03
+        ? 'The results agree (within ' + Math.max(1, Math.round(spread * 100)) + ' pts). The comparison group does not drive the result.'
+        : 'The results differ by ' + Math.round(spread * 100) + ' pts. The comparison group changes the result, so treat the headline with care.';
+    }
+    return el('div.robust',
+      el('p.verdict-q', { text: 'Check: ' + AID.M[metric].short + ' effect by comparison group' }),
+      rows,
+      el('p.method-note', { text: verdict + ' Change the group in Settings.' }));
   }
 
   // ---------------- KPI tiles ----------------
@@ -301,7 +330,7 @@ window.AID = window.AID || {};
         (corr.r >= 0.3 ? 'Groups that use AI more got a larger effect.' : corr.r <= -0.3 ? 'Higher adoption did not bring larger gains.' : 'Adoption alone does not explain the differences.'))));
     }
     const small = rows.length - reliable.length;
-    if (small) ins.appendChild(el('li', el('span', { text: small + ' ' + levelLabel + (small > 1 ? 's have' : ' has') + ' fewer than ' + AID.analysis.MIN_GROUP_DEVS + ' adopters with months before and after adoption. They are left out of the chart and ranking, and shown pale in the table.' })));
+    if (small) ins.appendChild(el('li', el('span', { text: small + ' ' + levelLabel + (small > 1 ? 's have' : ' has') + ' fewer than ' + ctx.minGroup + ' adopters with months before and after adoption. They are left out of the chart and ranking, and shown pale in the table.' })));
     wrap.appendChild(el('div.card', el('h3', { text: 'Key findings', style: { fontSize: '15px', marginBottom: '10px' } }), ins));
 
     const grid = el('div.grid-3-2');
@@ -419,7 +448,7 @@ window.AID = window.AID || {};
     }
     const tierIdx = [1, 2, 3];
     const hidden = data.reduce((s, r) => s + tierIdx.filter((ti) => r.cells[ti].lowSample && r.cells[ti].devCount > 0).length, 0);
-    if (hidden) ins.appendChild(el('li', el('span', { text: hidden + ' cell' + (hidden > 1 ? 's have' : ' has') + ' fewer than ' + AID.analysis.MIN_GROUP_DEVS + ' developers with enough data and ' + (hidden > 1 ? 'are' : 'is') + ' hidden from the chart.' })));
+    if (hidden) ins.appendChild(el('li', el('span', { text: hidden + ' cell' + (hidden > 1 ? 's have' : ' has') + ' fewer than ' + ctx.minGroup + ' developers with enough data and ' + (hidden > 1 ? 'are' : 'is') + ' hidden from the chart.' })));
 
     // Grouped bars: one group per row value, one bar per usage tier.
     const cellOf = (si, i) => data[i].cells[tierIdx[si]];
@@ -433,7 +462,7 @@ window.AID = window.AID || {};
       title: lift ? meta.short + ': improvement beyond non-adopters' : 'AI effect on ' + meta.short + ' by ' + dimLabel.toLowerCase() + ' and usage tier',
       sub: (lift
         ? 'Each bar = the tier\'s before/after change minus the change of non-adopters in the same ' + dimLabel.toLowerCase() + ', in percentage points. Positive = better.'
-        : 'Each bar = actual vs expected without AI, for adopters in that tier. Non-adopters are the comparison group, so they have no bar.' + (meta.better === 'down' ? ' Lower is better for this metric, so a negative effect is an improvement.' : '')) +
+        : 'Each bar = actual vs expected without AI, for adopters in that tier. Non-adopters have no AI months, so they have no bar.' + (meta.better === 'down' ? ' Lower is better for this metric, so a negative effect is an improvement.' : '')) +
         ' Whiskers = 95% confidence interval.',
     });
     queueMicrotask(() => AID.charts.grouped(c.canvas, {

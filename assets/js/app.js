@@ -10,7 +10,7 @@ window.AID = window.AID || {};
     theme: 'auto',
     showSettings: false,
     filters: { org: '', domain: '', team: '', level: '', icOnly: true, from: '', to: '' },
-    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, activeDays: 5, highDays: 12 },
+    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12 },
     exec: { metric: 'prsMerged', groupBy: 'org', crossBy: 'level', crossMode: 'did' },
     explore: {
       trendMetric: 'prsMerged', trendGroup: 'tier', trendX: 'calendar', trendAgg: 'mean',
@@ -167,8 +167,11 @@ window.AID = window.AID || {};
         el('p.help', { text: (s.mode === 'rollout' ? 'All developers split at one month.' : 'Each developer splits at their first month with ' + s.activeDays + '+ active days. Non-adopters split at the median adoption month.') + ' Used on Explore and in the Lift view. The AI effect on the Executive summary always uses each developer\'s adoption month.' })),
       el('div', select('Rollout month', [{ value: '', label: 'Auto (' + AID.data.monthLabel(ctx ? ctx.autoRollout : dataset.months[0], true) + ')' }].concat(months), s.rollout, (v) => setS({ rollout: v })),
         el('p.help', { text: 'Auto = first month when 20%+ of developers were active. Used in rollout mode.' })),
+      el('div', select('AI effect comparison group', [{ value: 'all', label: 'All developers without AI yet' }, { value: 'notyet', label: 'Adopters before adoption only' }, { value: 'never', label: 'Non-adopters only' }], s.control, (v) => setS({ control: v })),
+        el('p.help', { text: 'The developer-months that set the company-wide change each month, for the AI effect. "Adopters before adoption only" leaves out non-adopters; late months with too few of them are dropped.' })),
       numField('Ramp-up months to skip', s.ramp, 0, 6, (n) => setS({ ramp: n }), 'Months right after the split that count as neither before nor after.'),
       numField('New-hire onboarding months to skip', s.onboard, 0, 12, (n) => setS({ onboard: n }), 'A new hire is a developer whose first month of work is after the first month in the data. Their first months are left out of all results.'),
+      numField('Minimum developers per group', s.minGroup, 2, 30, (n) => setS({ minGroup: n }), 'Groups and job level × usage cells with fewer developers (with enough months before and after) are hidden from charts and flagged "Small sample". Small groups give wide, unreliable confidence intervals.'),
       numField('Active threshold (days / month)', s.activeDays, 2, 20, (n) => setS({ activeDays: n, highDays: Math.max(n + 1, s.highDays) }), 'A developer counts as an active AI user in a month with this many Cursor active days. Also the start of the "Medium" usage tier.'),
       numField('Heavy-usage threshold (days / month)', s.highDays, 2, 25, (n) => setS({ highDays: Math.max(n, s.activeDays + 1) }), 'Average active days per month for the "Heavy" usage tier. Under ' + AID.analysis.NON_ADOPTER_DAYS + ' day = non-adopter.'));
   }

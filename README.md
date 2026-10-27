@@ -7,7 +7,7 @@ No backend and no hosting. Open `index.html` in a browser.
 
 1. Open `index.html` in Chrome, Edge, Safari, or Firefox.
 2. Drop `developers.csv` and `developer_monthly_metrics.csv` on the page, or click **Choose CSV files**.
-3. Use the **Executive summary** and **Explore** tabs.
+3. Use the **Executive summary** and **Explore** tabs. The **Guide** tab explains how each number is calculated and how to read it.
 
 To preview without real data, click **Explore with demo data** (or open `index.html?demo`).
 The demo has about 500 synthetic developers in 3 orgs. **Download demo CSVs** gives you files in the exact expected format.
@@ -93,6 +93,10 @@ The verdict shows the headline effect with all three groups. If the results are 
 - Productivity by monthly AI usage, the Cursor feature mix, the usage distribution, and the primary model mix.
 - A developer table with search and sorting.
 
+**Guide**
+- Methods, a section for each chart, and a reference for every metric. The text uses your current settings (thresholds, onboarding months, minimum group size).
+- The **?** next to each chart title and KPI tile shows a short explanation. Hover or focus shows it. Click keeps it open. Its link opens the full section in the Guide.
+
 Every chart has a **Table** button that shows the chart data as a table.
 
 ## Files
@@ -105,13 +109,14 @@ assets/js/data.js        CSV parsing, month parsing, join
 assets/js/analysis.js    statistics, before/after model, series, correlations
 assets/js/charts.js      Chart.js wrappers and plugins
 assets/js/ui.js          DOM helpers, tables, cards, status chips
+assets/js/help.js        help text, the ? popover, the Guide page
 assets/js/executive.js   Executive summary
 assets/js/explore.js     Explore
 assets/js/demo.js        synthetic demo data
 assets/js/app.js         state, filters, settings, loading
 ```
 
-To add or change a metric, edit `assets/js/metrics.js`. Derived metrics are calculated in `derive()` in `data.js`.
+To add or change a metric, edit `assets/js/metrics.js`, and add its reading note to `METRIC_NOTES` in `assets/js/help.js`. Derived metrics are calculated in `derive()` in `data.js`.
 
 ## Notes
 

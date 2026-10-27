@@ -113,7 +113,7 @@ window.AID = window.AID || {};
 
   function renderTopbar() {
     for (const b of document.querySelectorAll('.tab')) b.setAttribute('aria-selected', String(b.dataset.tab === state.tab));
-    $('tabs').hidden = !dataset;
+    $('tabs').hidden = !dataset && state.tab !== 'guide';
     $('btn-settings').hidden = !dataset;
     $('btn-settings').setAttribute('aria-pressed', String(state.showSettings));
     $('btn-load').hidden = !dataset;
@@ -126,8 +126,8 @@ window.AID = window.AID || {};
 
   function renderFilters() {
     const bar = $('filterbar');
-    bar.hidden = !dataset;
-    if (!dataset) return;
+    bar.hidden = !dataset || state.tab === 'guide';
+    if (bar.hidden) return;
     const inner = $('filterbar-inner');
     inner.textContent = '';
     const f = state.filters, devs = dataset.devs.filter((d) => d.rows.length);
@@ -195,7 +195,8 @@ window.AID = window.AID || {};
       el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' } },
         el('button.btn.primary', { type: 'button', onclick: () => $('file-input').click(), text: 'Choose CSV files' }),
         el('button.btn', { type: 'button', onclick: loadDemo, text: 'Explore with demo data' }),
-        el('button.btn.ghost', { type: 'button', onclick: downloadDemo, text: 'Download demo CSVs' })));
+        el('button.btn.ghost', { type: 'button', onclick: downloadDemo, text: 'Download demo CSVs' }),
+        el('button.btn.ghost', { type: 'button', onclick: () => update({ tab: 'guide' }), text: 'How the dashboard works' })));
     const req = el('div.card.req-list',
       el('h3', { text: 'Expected files', style: { fontSize: '15px', marginBottom: '8px' } }),
       el('p', 'developers.csv — one row per developer. Needs ', el('code', { text: 'devId' }), '. The dashboard also uses ',
@@ -219,6 +220,7 @@ window.AID = window.AID || {};
     AID.charts.destroyAll();
     main.textContent = '';
     renderMessages(main);
+    if (state.tab === 'guide') { renderSettings(null); AID.help.renderGuide(main); requestAnimationFrame(() => window.scrollTo(0, y)); return; }
     if (!dataset) { renderSettings(null); renderWelcome(main); return; }
     if (typeof Chart === 'undefined') {
       main.appendChild(el('div.alert.error', { text: 'Chart.js did not load from the CDN. Check your internet connection or network policy, then reload the page.' }));

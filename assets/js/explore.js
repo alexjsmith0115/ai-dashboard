@@ -2,7 +2,7 @@
 window.AID = window.AID || {};
 (function (AID) {
   'use strict';
-  const { el, select, seg, statusChip, table, card } = AID.ui;
+  const { el, select, seg, statusChip, table, card, titleRow } = AID.ui;
   const F = AID.fmt;
 
   const GROUP_OPTS = [{ value: 'all', label: 'None' }].concat(AID.GROUPS.map((g) => ({ value: g.key, label: g.label })));
@@ -48,7 +48,6 @@ window.AID = window.AID || {};
     page.appendChild(g3);
 
     page.appendChild(devTableCard(ctx, st, set));
-    page.appendChild(definitions());
   }
 
   // ---------------- Trends ----------------
@@ -62,7 +61,7 @@ window.AID = window.AID || {};
     ];
     const rel = st.trendX === 'relative';
     const c = card({
-      id: 'x-trend', height: 340, controls,
+      id: 'x-trend', height: 340, controls, help: 'c-trend',
       title: 'Metric trends',
       sub: rel ? 'X axis = months relative to the split month (company rollout or each developer\'s adoption month, per the setting). Points with fewer than 3 developer-months are hidden.' : (meta.desc || 'Monthly value for the selected metric.'),
     });
@@ -91,7 +90,7 @@ window.AID = window.AID || {};
       .map((m) => Object.assign(ctx.compare(m.key), { meta: m })).filter((r) => r.status !== 'nodata');
     return el('section.card',
       el('div.card-head', el('div',
-        el('h3', { text: 'Before vs after AI, every metric' }),
+        titleRow('Before vs after AI, every metric', 'c-allmetrics'),
         el('p.sub', { text: 'Average per developer per month. Each developer is compared with their own baseline. Status is "Improved" or "Worse" only when the 95% confidence interval excludes zero.' }))),
       table([
         { label: 'Source', value: (r) => r.meta.source },
@@ -117,7 +116,7 @@ window.AID = window.AID || {};
 
     const c = el('section.card');
     c.appendChild(el('div.card-head',
-      el('div', el('h3', { text: 'Correlations' }), el('p.sub', { text: LEVEL_HELP[st.corrLevel] + ' Click a cell to plot it.' })),
+      el('div', titleRow('Correlations', 'c-corr'), el('p.sub', { text: LEVEL_HELP[st.corrLevel] + ' Click a cell to plot it.' })),
       el('div.card-controls',
         select('Level', LEVEL_OPTS, st.corrLevel, (v) => set({ corrLevel: v, sLevel: v })),
         select('Method', [{ value: 'spearman', label: 'Spearman (rank)' }, { value: 'pearson', label: 'Pearson' }], st.corrMethod, (v) => set({ corrMethod: v })),
@@ -167,7 +166,7 @@ window.AID = window.AID || {};
   function scatterCard(ctx, st, set, t) {
     const opts = AID.ui.metricOptions(null, true);
     const c = card({
-      id: 'x-scatter', height: 360,
+      id: 'x-scatter', height: 360, help: 'c-scatter',
       title: 'Relationship explorer',
       sub: LEVEL_HELP[st.sLevel],
       controls: [
@@ -219,7 +218,7 @@ window.AID = window.AID || {};
 
     const c = el('section.card');
     c.appendChild(el('div.card-head',
-      el('div', el('h3', { text: 'Impact by group, every key metric' }),
+      el('div', titleRow('Impact by group, every key metric', 'c-groupheat'),
         el('p.sub', { text: 'Before → after change per group. Blue = better, red = worse (lower is better for cycle time, time to merge, and reopen rate). Pale cells are not statistically clear. Rows are sorted by PRs merged (Level × usage: by level, then usage tier).' })),
       el('div.card-controls', seg('Group', AID.GROUPS.map((g) => ({ value: g.key, label: g.label })).concat([{ value: 'levelTier', label: 'Level × usage' }]), level, (v) => set({ gcGroup: v })))));
 
@@ -255,7 +254,7 @@ window.AID = window.AID || {};
   function doseCard(ctx, st, set, t) {
     const meta = AID.M[st.doseMetric];
     const c = card({
-      id: 'x-dose', height: 280,
+      id: 'x-dose', height: 280, help: 'c-dose',
       title: meta.short + ' by monthly AI usage',
       sub: 'Average per developer-month, grouped by Cursor active days that month.' + (st.doseAfter ? ' After-period months only, so calendar trends do not mix in.' : ''),
       controls: [
@@ -285,7 +284,7 @@ window.AID = window.AID || {};
     const keys = ['agentRequests', 'composerRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages'];
     const share = st.mixMode === 'share';
     const c = card({
-      id: 'x-mix', height: 280, title: 'How developers use Cursor',
+      id: 'x-mix', height: 280, help: 'c-mix', title: 'How developers use Cursor',
       sub: share ? 'Share of all AI requests by feature, per month.' : 'Average requests per developer per month, by feature.',
       controls: [seg('Mode', [{ value: 'share', label: 'Share' }, { value: 'abs', label: 'Per dev' }], st.mixMode, (v) => set({ mixMode: v }))],
     });
@@ -306,7 +305,7 @@ window.AID = window.AID || {};
 
   // ---------------- Usage distribution ----------------
   function usageDistCard(ctx, t) {
-    const c = card({ id: 'x-dist', height: 260, title: 'How much each developer uses AI', sub: 'Developers by average Cursor active days per month in the after period.' });
+    const c = card({ id: 'x-dist', height: 260, help: 'c-usagedist', title: 'How much each developer uses AI', sub: 'Developers by average Cursor active days per month in the after period.' });
     const bins = [];
     // One-day bins, so bin edges line up with the tier thresholds.
     for (let i = 0; i <= 22; i++) bins.push({ lo: i, hi: i + 1, label: i ? String(i) : '<1', n: 0 });
@@ -329,7 +328,7 @@ window.AID = window.AID || {};
 
   // ---------------- Model mix ----------------
   function modelCard(ctx, st, set, t) {
-    const c = card({ id: 'x-model', height: 260, title: 'Primary model', sub: 'Share of active developer-months by the model used most. Top 7 models; the rest are "Other".' });
+    const c = card({ id: 'x-model', height: 260, help: 'c-model', title: 'Primary model', sub: 'Share of active developer-months by the model used most. Top 7 models; the rest are "Other".' });
     const counts = new Map();
     for (const d of ctx.devs) for (const r of ctx.rowsOf(d)) if (r.model) counts.set(r.model, (counts.get(r.model) || 0) + 1);
     if (!counts.size) { c.empty('No primaryModel values in range.'); return c.el; }
@@ -364,7 +363,7 @@ window.AID = window.AID || {};
     search.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => set({ devSearch: search.value }), 250); });
     const box = el('section.card',
       el('div.card-head',
-        el('div', el('h3', { text: 'Developers' }), el('p.sub', { text: rows.length + ' developers. Before/after values are monthly averages. Click a header to sort.' })),
+        el('div', titleRow('Developers', 'c-devtable'), el('p.sub', { text: rows.length + ' developers. Before/after values are monthly averages. Click a header to sort.' })),
         el('div.card-controls', search)),
       table([
         { label: 'Name', value: (r) => r.dev.name },
@@ -383,15 +382,6 @@ window.AID = window.AID || {};
       ], rows, { sortCol: 5, sortDir: -1, limit: 600, maxHeight: '480px' }));
     if (rows.length > 600) box.appendChild(el('p.card-foot', { text: 'Showing the first 600 rows. Use search or the global filters to narrow the list.' }));
     return box;
-  }
-
-  function definitions() {
-    const dl = el('dl');
-    for (const m of AID.METRICS) {
-      dl.appendChild(el('dt', { text: m.label }));
-      dl.appendChild(el('dd', { text: m.source + ' · ' + (m.desc || ('Column ' + m.key + '.')) + (m.better !== 'neutral' ? ' ' + (m.better === 'up' ? 'Higher' : 'Lower') + ' is better.' : '') }));
-    }
-    return el('section.card', el('details.defs', el('summary', { text: 'Metric definitions' }), dl));
   }
 
   AID.explore = { render };

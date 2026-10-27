@@ -141,6 +141,12 @@ window.AID = window.AID || {};
 
   // ---------- Card with chart / table toggle ----------
   const tableMode = new Set();
+  // A card title with an optional "?" help button (topic id from help.js).
+  function titleRow(text, helpId, tag) {
+    return el('div.card-title', el(tag || 'h3', { text }), helpId && AID.help ? AID.help.button(helpId) : null);
+  }
+
+  // o: {id, title, sub, help (topic id), height, controls, table}
   function card(o) {
     const canvas = el('canvas', { role: 'img', 'aria-label': o.title });
     const box = el('div.chart-box', { style: { height: (o.height || 280) + 'px' } }, canvas);
@@ -153,7 +159,7 @@ window.AID = window.AID || {};
       controls.appendChild(toggle);
     }
     const node = el('section.card', { id: o.id ? 'card-' + o.id : null },
-      el('header.card-head', el('div', el('h3', { text: o.title }), o.sub ? el('p.sub', { text: o.sub }) : null), controls),
+      el('header.card-head', el('div', titleRow(o.title, o.help), o.sub ? el('p.sub', { text: o.sub }) : null), controls),
       box, tableBox, foot);
     let tableFn = null;
     function sync() {
@@ -177,5 +183,5 @@ window.AID = window.AID || {};
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }
 
-  AID.ui = { el, append, select, seg, metricOptions, icon, statusChip, answerChip, table, card, download };
+  AID.ui = { el, append, select, seg, metricOptions, icon, statusChip, answerChip, table, card, titleRow, download };
 })(window.AID);

@@ -296,3 +296,61 @@ details.defs dd { margin: 0; color: var(--text-2); }
   .topbar-inner, .filterbar-inner, main, .settings { padding-left: 16px; padding-right: 16px; }
   .hero { font-size: 44px; }
 }
+
+/* ---------- Help: "?" button and popover ---------- */
+.card-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.card-title h3, .card-title .verdict-q { margin: 0; }
+.kpi-name { display: inline-flex; align-items: center; gap: 6px; }
+.help-btn {
+  flex: none; width: 18px; height: 18px; border-radius: 50%; padding: 0;
+  border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+  font: 600 11px/1 var(--font); cursor: help; display: inline-grid; place-items: center;
+}
+.help-btn:hover, .help-btn[aria-expanded="true"] { color: var(--text); border-color: var(--axis); background: var(--surface-2); }
+.help-btn:focus-visible { outline: 2px solid var(--accent, #2a78d6); outline-offset: 2px; }
+.help-pop {
+  position: absolute; z-index: 50; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.14), 0 1px 3px rgba(0, 0, 0, 0.08);
+  font-size: 13px; line-height: 1.45;
+}
+.help-pop[hidden] { display: none; }
+.help-pop-area { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.help-pop-title { font-weight: 600; font-size: 14px; margin: 2px 0 6px; }
+.help-pop p { color: var(--text-2); margin: 0 0 6px; }
+.help-pop ul { margin: 0 0 8px; padding-left: 18px; color: var(--text-2); }
+.help-pop li { margin: 2px 0; }
+.help-pop-link { border: 0; background: none; padding: 0; color: var(--accent); font: 500 13px var(--font); cursor: pointer; }
+.help-pop-link:hover { text-decoration: underline; }
+
+/* ---------- Guide page ---------- */
+.guide-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; align-items: start; }
+.guide-toc { position: sticky; top: 76px; max-height: calc(100vh - 96px); overflow: auto; font-size: 13px; padding-right: 4px; }
+.guide-toc-group { margin-bottom: 14px; }
+.guide-toc-head { font-weight: 600; color: var(--text); text-decoration: none; display: block; margin-bottom: 4px; }
+.guide-toc ul { list-style: none; margin: 0; padding: 0; }
+.guide-toc li a { display: block; color: var(--text-2); text-decoration: none; padding: 3px 0 3px 10px; border-left: 1px solid var(--border); }
+.guide-toc a:hover { color: var(--text); }
+.guide-toc li a:hover { border-left-color: var(--axis); }
+.guide-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.guide-h2 { font-size: 18px; margin: 18px 0 2px; scroll-margin-top: 80px; }
+.guide-h2:first-child { margin-top: 0; }
+.guide-card { scroll-margin-top: 80px; max-width: 860px; transition: box-shadow 0.3s; }
+.guide-card.flash { box-shadow: 0 0 0 2px var(--accent); }
+.guide-card h3 { font-size: 16px; margin: 2px 0 6px; }
+.guide-card h4 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 14px 0 4px; font-weight: 600; }
+.guide-card p, .guide-card li { color: var(--text-2); font-size: 14px; line-height: 1.55; }
+.guide-card p + p { margin-top: 8px; }
+.guide-card ul, .guide-card ol { padding-left: 20px; margin: 4px 0 0; }
+.guide-card li { margin: 3px 0; }
+.guide-card .guide-short { color: var(--text); font-size: 15px; }
+.guide-area { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.guide-see { margin-top: 12px; font-size: 13px; }
+.guide-see a, .guide-card td a { color: var(--accent); text-decoration: none; }
+.guide-see a:hover, .guide-card td a:hover { text-decoration: underline; }
+@media (max-width: 900px) {
+  .guide-layout { grid-template-columns: 1fr; }
+  .guide-toc { position: static; max-height: none; display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .guide-toc ul { display: none; }
+  .guide-toc-group { margin: 0; }
+}

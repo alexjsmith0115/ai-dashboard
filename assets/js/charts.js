@@ -13,6 +13,8 @@ window.AID = window.AID || {};
       grid: css('--grid'), axis: css('--axis'), surface: css('--surface'), border: css('--border'),
       divPos: css('--div-pos'), divNeg: css('--div-neg'), divMid: css('--div-mid'),
       ord: [css('--ord-1'), css('--ord-2'), css('--ord-3')],
+      // Usage tiers: non-adopters in neutral gray (the comparison group), then the ordinal blue ramp.
+      tiers: [css('--tier-none'), css('--ord-1'), css('--ord-2'), css('--ord-3')],
       font: css('--font') || 'system-ui, sans-serif',
     };
   }
@@ -166,10 +168,39 @@ window.AID = window.AID || {};
     },
   };
 
+  // 95% CI whiskers on bars. Each dataset may carry errors: [[lo, hi] | null, ...] in data units.
+  const errorBars = {
+    id: 'errorBars',
+    afterDatasetsDraw(chart, _a, opts) {
+      if (!opts || !opts.enabled) return;
+      const t = theme(), ctx = chart.ctx, ys = chart.scales.y, a = chart.chartArea;
+      ctx.save(); ctx.strokeStyle = t.text2; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.rect(a.left, a.top, a.right - a.left, a.bottom - a.top); ctx.clip();
+      chart.data.datasets.forEach((ds, di) => {
+        const meta = chart.getDatasetMeta(di);
+        if (meta.hidden || !ds.errors) return;
+        meta.data.forEach((bar, i) => {
+          const e = ds.errors[i];
+          if (!e || ds.data[i] == null) return;
+          const x = Math.round(bar.x) + 0.5, y0 = ys.getPixelForValue(e[0]), y1 = ys.getPixelForValue(e[1]);
+          const cap = Math.min(4, bar.width / 4);
+          ctx.beginPath();
+          ctx.moveTo(x, y0); ctx.lineTo(x, y1);
+          ctx.moveTo(x - cap, y0); ctx.lineTo(x + cap, y0);
+          ctx.moveTo(x - cap, y1); ctx.lineTo(x + cap, y1);
+          // Surface-colored halo keeps the whisker legible over any bar fill.
+          ctx.strokeStyle = t.surface; ctx.lineWidth = 3; ctx.stroke();
+          ctx.strokeStyle = t.text2; ctx.lineWidth = 1; ctx.stroke();
+        });
+      });
+      ctx.restore();
+    },
+  };
+
   let registered = false;
   function ensure() {
     if (registered) return;
-    Chart.register(crosshair, markers, endLabels, barLabels, pointLabels);
+    Chart.register(crosshair, markers, endLabels, barLabels, pointLabels, errorBars);
     registered = true;
   }
 
@@ -285,6 +316,56 @@ window.AID = window.AID || {};
         },
         onHover: (e, els) => { e.native.target.style.cursor = els.length && o.onClick ? 'pointer' : 'default'; },
         onClick: o.onClick ? (e, els) => { if (els.length) o.onClick(els[0].index); } : undefined,
+      },
+    };
+    return mount(canvas, cfg);
+  }
+
+  // ---------- Grouped bars (vertical) with optional CI whiskers ----------
+  // o: {labels, series:[{name, values, color, errors?}], axisFmt, valueFmt, tooltipLines(seriesIndex, index) -> [strings]}
+  function grouped(canvas, o) {
+    ensure();
+    const t = theme();
+    const axisFmt = o.axisFmt || ((v) => AID.fmt.value(v, o.unit, { short: true }));
+    // The value axis must cover the whiskers, not just the bars.
+    const ext = [0];
+    for (const s of o.series) {
+      s.values.forEach((v) => { if (v != null) ext.push(v); });
+      (s.errors || []).forEach((e) => { if (e) ext.push(e[0], e[1]); });
+    }
+    const lo = Math.min(...ext), hi = Math.max(...ext), pad = (hi - lo) * 0.05;
+    const cfg = {
+      type: 'bar',
+      data: {
+        labels: o.labels,
+        datasets: o.series.map((s) => ({
+          label: s.name, data: s.values, errors: s.errors, backgroundColor: s.color, hoverBackgroundColor: s.color,
+          borderColor: t.surface, borderWidth: { left: 1, right: 1 }, borderSkipped: 'start', borderRadius: 4,
+          maxBarThickness: 24, categoryPercentage: 0.7, barPercentage: 0.94,
+        })),
+      },
+      options: {
+        layout: { padding: { top: 4 } },
+        scales: {
+          x: Object.assign(axisCommon(t), { grid: { display: false }, border: { display: false }, ticks: { color: t.text2, font: { weight: '500' } } }),
+          y: Object.assign(axisCommon(t), {
+            beginAtZero: true, suggestedMin: lo < 0 ? lo - pad : 0, suggestedMax: hi + pad,
+            grid: { color: (c) => (c.tick && c.tick.value === 0 ? t.axis : t.grid), drawTicks: false },
+            ticks: { color: t.muted, maxTicksLimit: 7, callback: axisFmt },
+          }),
+        },
+        plugins: {
+          legend: legend(t, o.series.length > 1, 'rect'),
+          tooltip: tooltip(t, {
+            mode: 'nearest', intersect: true, displayColors: false,
+            callbacks: {
+              title: (items) => items[0].label + ' · ' + items[0].dataset.label,
+              label: (c) => (o.valueFmt ? o.valueFmt(c.raw) : axisFmt(c.raw)),
+              afterLabel: (c) => (o.tooltipLines ? o.tooltipLines(c.datasetIndex, c.dataIndex) : null),
+            },
+          }),
+          errorBars: { enabled: true },
+        },
       },
     };
     return mount(canvas, cfg);
@@ -420,5 +501,5 @@ window.AID = window.AID || {};
     return svg;
   }
 
-  AID.charts = { theme, applyDefaults, destroyAll, gc, colorFor, line, bars, stacked, scatter, diverging, hexA, mix, sparkline };
+  AID.charts = { theme, applyDefaults, destroyAll, gc, colorFor, line, bars, grouped, stacked, scatter, diverging, hexA, mix, sparkline };
 })(window.AID);

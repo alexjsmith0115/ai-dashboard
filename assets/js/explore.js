@@ -69,7 +69,7 @@ window.AID = window.AID || {};
     const s = ctx.series(st.trendMetric, { groupKey: st.trendGroup, agg: st.trendAgg, xMode: st.trendX });
     const allNames = st.trendGroup === 'all' || st.trendGroup === 'tier' ? null : [...new Set(ctx.ds.devs.map((d) => d[st.trendGroup]))].sort();
     const series = s.series.map((x, i) => Object.assign(x, {
-      color: st.trendGroup === 'tier' ? (ctx.TIERS.indexOf(x.name) >= 0 ? t.ord[ctx.TIERS.indexOf(x.name)] : t.other) : AID.charts.colorFor(x.name, i, allNames),
+      color: st.trendGroup === 'tier' ? (ctx.TIERS.indexOf(x.name) >= 0 ? t.tiers[ctx.TIERS.indexOf(x.name)] : t.other) : AID.charts.colorFor(x.name, i, allNames),
     }));
     if (s.folded) c.foot.textContent = 'Showing the 7 largest groups. The other ' + s.folded + ' are combined into "Other". Filter or use the table view for detail.';
     const mIdx = rel ? s.xs.indexOf(0) : (ctx.perDev ? -1 : s.xs.indexOf(ctx.rolloutIdx));
@@ -180,7 +180,7 @@ window.AID = window.AID || {};
     if (pts.length < 3) { c.empty('Not enough data points for this pair.'); return c.el; }
     const xm = AID.M[st.sx], ym = AID.M[st.sy];
     const dense = pts.length > 1500;
-    const groups = ctx.TIERS.map((tier, i) => ({ name: tier, color: t.ord[i], points: pts.filter((p) => ctx.tierOf(p.dev) === tier) })).filter((g) => g.points.length);
+    const groups = ctx.TIERS.map((tier, i) => ({ name: tier, color: t.tiers[i], points: pts.filter((p) => ctx.tierOf(p.dev) === tier) })).filter((g) => g.points.length);
     const fit = AID.analysis.linearFit(pts.map((p) => p.x), pts.map((p) => p.y));
     const xs = pts.map((p) => p.x);
     const sp = AID.analysis.correlate(xs, pts.map((p) => p.y), 'spearman');
@@ -210,14 +210,18 @@ window.AID = window.AID || {};
     const res = HEAT_METRICS.map((k) => ctx.compareByGroup(k, level));
     const groups = [...new Set(res[0].map((r) => r.group))];
     const head = res[0].reduce((acc, r) => { acc[r.group] = r; return acc; }, {});
-    groups.sort((a, b) => (head[b].score ?? -9) - (head[a].score ?? -9));
+    if (level === 'levelTier') {
+      // Keep each level's tiers together, in tier order: SDE1 · Non-adopter, SDE1 · Light, …
+      const ti = (g) => ctx.TIER_SHORT.indexOf(g.split(' · ')[1]);
+      groups.sort((a, b) => a.split(' · ')[0].localeCompare(b.split(' · ')[0], undefined, { numeric: true }) || ti(a) - ti(b));
+    } else groups.sort((a, b) => (head[b].score ?? -9) - (head[a].score ?? -9));
     const look = res.map((list) => Object.fromEntries(list.map((r) => [r.group, r])));
 
     const c = el('section.card');
     c.appendChild(el('div.card-head',
       el('div', el('h3', { text: 'Impact by group, every key metric' }),
-        el('p.sub', { text: 'Before → after change per group. Blue = better, red = worse (lower is better for cycle time, time to merge, and reopen rate). Pale cells are not statistically clear. Rows are sorted by PRs merged.' })),
-      el('div.card-controls', seg('Group', AID.GROUPS.map((g) => ({ value: g.key, label: g.label })), level, (v) => set({ gcGroup: v })))));
+        el('p.sub', { text: 'Before → after change per group. Blue = better, red = worse (lower is better for cycle time, time to merge, and reopen rate). Pale cells are not statistically clear. Rows are sorted by PRs merged (Level × usage: by level, then usage tier).' })),
+      el('div.card-controls', seg('Group', AID.GROUPS.map((g) => ({ value: g.key, label: g.label })).concat([{ value: 'levelTier', label: 'Level × usage' }]), level, (v) => set({ gcGroup: v })))));
 
     const tbl = el('table.heat');
     const hr = el('tr', el('th'), el('th.col', { text: 'Developers' }), el('th.col', { text: 'Adoption' }));
@@ -260,7 +264,7 @@ window.AID = window.AID || {};
       ],
     });
     const d = ctx.doseResponse(st.doseMetric, st.doseAfter);
-    const ramp = [t.ord[0], t.ord[0], t.ord[1], t.ord[1], t.ord[2]];
+    const ramp = [t.tiers[0], t.tiers[1], t.tiers[2], t.tiers[2], t.tiers[3]];
     queueMicrotask(() => AID.charts.bars(c.canvas, {
       labels: d.map((b) => b.label), values: d.map((b) => b.mean), colors: d.map((b, i) => ramp[i]), unit: meta.unit,
       valueFmt: (v) => F.metric(v, st.doseMetric, { short: true }),
@@ -304,7 +308,8 @@ window.AID = window.AID || {};
   function usageDistCard(ctx, t) {
     const c = card({ id: 'x-dist', height: 260, title: 'How much each developer uses AI', sub: 'Developers by average Cursor active days per month in the after period.' });
     const bins = [];
-    for (let i = 0; i <= 22; i += 2) bins.push({ lo: i, hi: i + 2, label: i + '–' + (i + 1), n: 0 });
+    // One-day bins, so bin edges line up with the tier thresholds.
+    for (let i = 0; i <= 22; i++) bins.push({ lo: i, hi: i + 1, label: i ? String(i) : '<1', n: 0 });
     bins[bins.length - 1].hi = Infinity; bins[bins.length - 1].label = '22+';
     for (const d of ctx.devs) {
       const u = ctx.usageAfter(d);
@@ -312,12 +317,12 @@ window.AID = window.AID || {};
       const b = bins.find((x) => u >= x.lo && u < x.hi);
       if (b) b.n++;
     }
-    const colorOf = (b) => (b.lo >= ctx.hi ? t.ord[2] : b.lo >= ctx.thr ? t.ord[1] : t.ord[0]);
+    const colorOf = (b) => t.tiers[b.lo >= ctx.hi ? 3 : b.lo >= ctx.thr ? 2 : b.lo >= AID.analysis.NON_ADOPTER_DAYS ? 1 : 0];
     queueMicrotask(() => AID.charts.bars(c.canvas, {
       labels: bins.map((b) => b.label), values: bins.map((b) => b.n), colors: bins.map(colorOf), unit: 'count',
       valueFmt: (v) => (v ? String(v) : ''), tooltipLines: () => ['developers'],
     }));
-    c.foot.textContent = 'Shade = usage tier (Low / Medium / High). Change the tier thresholds in Settings.';
+    c.foot.textContent = 'X axis: average active days per month. Color = usage tier (gray = non-adopter, then light / medium / heavy). Change the tier thresholds in Settings.';
     c.setTable(() => table([{ label: 'Avg active days', value: (b) => b.label, sortable: false }, { label: 'Developers', num: true, value: (b) => b.n }], bins, { sortable: false }));
     return c.el;
   }

@@ -11,7 +11,7 @@ window.AID = window.AID || {};
     showSettings: false,
     filters: { org: '', domain: '', team: '', level: '', icOnly: true, from: '', to: '' },
     settings: { mode: 'rollout', rollout: '', ramp: 0, activeDays: 5, highDays: 12 },
-    exec: { metric: 'prsMerged', groupBy: 'org' },
+    exec: { metric: 'prsMerged', groupBy: 'org', crossBy: 'level', crossMode: 'change' },
     explore: {
       trendMetric: 'prsMerged', trendGroup: 'tier', trendX: 'calendar', trendAgg: 'mean',
       corrLevel: 'change', corrMethod: 'spearman', corrSet: 'usage',
@@ -168,8 +168,8 @@ window.AID = window.AID || {};
       el('div', select('Rollout month', [{ value: '', label: 'Auto (' + AID.data.monthLabel(ctx ? ctx.autoRollout : dataset.months[0], true) + ')' }].concat(months), s.rollout, (v) => setS({ rollout: v })),
         el('p.help', { text: 'Auto = first month when 20%+ of developers were active. Used in rollout mode.' })),
       numField('Ramp-up months to skip', s.ramp, 0, 6, (n) => setS({ ramp: n }), 'Months right after the split that count as neither before nor after.'),
-      numField('Active threshold (days / month)', s.activeDays, 1, 20, (n) => setS({ activeDays: n, highDays: Math.max(n + 1, s.highDays) }), 'A developer counts as an active AI user in a month with this many Cursor active days.'),
-      numField('High-usage threshold (days / month)', s.highDays, 2, 25, (n) => setS({ highDays: Math.max(n, s.activeDays + 1) }), 'Average active days for the "High" usage tier.'));
+      numField('Active threshold (days / month)', s.activeDays, 2, 20, (n) => setS({ activeDays: n, highDays: Math.max(n + 1, s.highDays) }), 'A developer counts as an active AI user in a month with this many Cursor active days. Also the start of the "Medium" usage tier.'),
+      numField('Heavy-usage threshold (days / month)', s.highDays, 2, 25, (n) => setS({ highDays: Math.max(n, s.activeDays + 1) }), 'Average active days per month for the "Heavy" usage tier. Under ' + AID.analysis.NON_ADOPTER_DAYS + ' day = non-adopter.'));
   }
 
   function renderMessages(main) {

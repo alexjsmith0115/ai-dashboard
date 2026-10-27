@@ -51,7 +51,9 @@ Blank cells:
 
 **Paired comparison.** Each developer is compared with their own baseline: the after-period average minus the before-period average. Then the dashboard averages these per-developer changes. A developer needs 2+ months on each side. Thus new hires and leavers do not change the result. "Improved" or "Worse" shows only when the 95% confidence interval excludes zero.
 
-**AI usage tiers.** Each developer's tier comes from their average Cursor active days per month in the after period: Low (< 5), Medium (5–11), High (12+). You can change the thresholds in Settings. The main evidence that AI causes a change is a comparison of tiers over the same months. If high-usage developers improved more than low-usage developers, seasonality and org-wide changes cannot explain the gap.
+**AI usage tiers.** Each developer's tier comes from their average Cursor active days per month in the after period: Non-adopter (< 1), Light (1–4), Medium (5–11), Heavy (12+). You can change the Medium and Heavy thresholds in Settings. The main evidence that AI causes a change is a comparison of tiers over the same months. If heavy users improved more than non-adopters, seasonality and org-wide changes cannot explain the gap.
+
+**Lift.** Lift = a tier's improvement minus the improvement of non-adopters in the same group (for example, heavy-user SDE2s vs non-adopter SDE2s), in percentage points. Positive = better. The 95% CI uses the standard errors of both cells. Cells with fewer than 5 developers are hidden.
 
 **Groups.** Groups with fewer than 5 developers who have before/after data are flagged "Small sample". The executive charts do not rank them.
 
@@ -62,12 +64,13 @@ Blank cells:
 - KPI tiles: adoption, spend, PRs merged, Jira throughput, story points, cycle time, time to merge, and reopen rate (the quality guardrail).
 - Adoption over time, and the headline metric by usage tier over time.
 - **Which groups are most impacted?** for Org, Domain, Team, or Job level. This section has key findings, a ranked change chart (top/bottom 10 when there are many teams), adoption vs impact, and a full table.
+- **Impact by job level and AI usage**: grouped bars for each job level (or org) × usage tier, with 95% CI whiskers. Switch between *Change* and *Lift vs non-adopters*. A findings list and a matrix table compare heavy users with non-adopters at each level.
 
 **Explore**
 - Metric trends for any metric. You can group by org, domain, team, level, role, or usage tier. The x-axis can be calendar months or months since adoption.
 - A before/after table for every metric.
 - A correlation heatmap with three levels: per-developer change, per developer, or per developer-month. Click a cell to plot that pair in the relationship explorer.
-- A group × metric heatmap.
+- A group × metric heatmap. Use *Level × usage* to see every key metric for each level and tier.
 - Productivity by monthly AI usage, the Cursor feature mix, the usage distribution, and the primary model mix.
 - A developer table with search and sorting.
 

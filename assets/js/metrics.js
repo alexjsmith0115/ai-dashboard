@@ -91,7 +91,8 @@ window.AID = window.AID || {};
     if (v == null || !isFinite(v)) return '—';
     const d = digits == null ? 1 : digits;
     const s = (v * 100).toFixed(d);
-    return (v > 0 ? '+' : '') + (s === '-0.0' ? '0.0' : s) + '%';
+    if (Number(s) === 0) return (0).toFixed(d) + '%'; // no "-0%" or "+0%"
+    return (v > 0 ? '+' : '') + s + '%';
   }
 
   function fmtPts(v) {

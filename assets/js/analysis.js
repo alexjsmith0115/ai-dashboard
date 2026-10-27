@@ -5,6 +5,7 @@ window.AID = window.AID || {};
 
   const MIN_MONTHS_PER_SIDE = 2; // a developer needs this many months before AND after to count
   const MIN_GROUP_DEVS = 5;      // groups smaller than this are flagged as low sample
+  const NON_ADOPTER_DAYS = 1;    // average active days / month below this = non-adopter
   const OTHER = 'Other';
 
   // ---------- Basic stats ----------
@@ -111,20 +112,31 @@ window.AID = window.AID || {};
     };
 
     const tierCache = new Map();
-    const TIER_LOW = 'Low (<' + thr + ' d/mo)', TIER_MED = 'Medium (' + thr + '–' + (hi - 1) + ')', TIER_HIGH = 'High (' + hi + '+ d/mo)';
-    const TIERS = [TIER_LOW, TIER_MED, TIER_HIGH];
+    // Usage tiers from average Cursor active days per month in the after period.
+    const TIER_SHORT = ['Non-adopter', 'Light', 'Medium', 'Heavy'];
+    const TIERS = [
+      'Non-adopter (<' + NON_ADOPTER_DAYS + ' d/mo)',
+      'Light (' + NON_ADOPTER_DAYS + '–' + (thr - 1) + ')',
+      'Medium (' + thr + '–' + (hi - 1) + ')',
+      'Heavy (' + hi + '+ d/mo)',
+    ];
     const usageAfter = (d) => {
       const after = rowsOf(d).filter((r) => phaseOf(r) === 'after');
       return mean((after.length ? after : rowsOf(d)).map((r) => r.v.activeDays));
     };
-    const tierOf = (d) => {
+    const tierIndex = (d) => {
       if (tierCache.has(d)) return tierCache.get(d);
       const u = usageAfter(d);
-      const t = u == null ? 'No data' : u >= hi ? TIER_HIGH : u >= thr ? TIER_MED : TIER_LOW;
-      tierCache.set(d, t);
-      return t;
+      const i = u == null ? -1 : u >= hi ? 3 : u >= thr ? 2 : u >= NON_ADOPTER_DAYS ? 1 : 0;
+      tierCache.set(d, i);
+      return i;
     };
-    const groupOf = (d, key) => (key === 'tier' ? tierOf(d) : key === 'all' ? 'All developers' : d[key]);
+    const tierOf = (d) => (tierIndex(d) < 0 ? 'No data' : TIERS[tierIndex(d)]);
+    const groupOf = (d, key) => {
+      if (key === 'tier') return tierOf(d);
+      if (key === 'levelTier') return d.level + ' · ' + (tierIndex(d) < 0 ? 'No data' : TIER_SHORT[tierIndex(d)]);
+      return key === 'all' ? 'All developers' : d[key];
+    };
 
     const phaseCache = new Map();
     function phaseMeans(d, key) {
@@ -156,7 +168,7 @@ window.AID = window.AID || {};
       if (n < 2 || !res.before) return res;
       const md = mean(diffs), se = sd(diffs) / Math.sqrt(n), h = tCrit(n - 1) * se;
       const base = Math.abs(res.before);
-      Object.assign(res, { diff: md, pct: md / base, lo: (md - h) / base, hi: (md + h) / base });
+      Object.assign(res, { diff: md, pct: md / base, lo: (md - h) / base, hi: (md + h) / base, sePct: se / base });
       // Usage that starts near zero (most Cursor metrics before rollout) makes % change meaningless.
       res.fromZero = meta.source === 'Cursor' && base < 0.1 * Math.abs(res.after);
       const sig = md - h > 0 || md + h < 0;
@@ -201,6 +213,29 @@ window.AID = window.AID || {};
         }));
       }
       return out;
+    }
+
+    // Rows of a dimension (e.g. job level) × usage tier. Each cell is a paired before/after comparison.
+    // lift = cell's improvement minus the same row's non-adopters' improvement (positive = better), in % points.
+    function compareCross(metric, rowKey) {
+      const rowVals = [...new Set(devs.map((d) => groupOf(d, rowKey)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      return rowVals.map((rv) => {
+        const inRow = devs.filter((d) => groupOf(d, rowKey) === rv);
+        const cells = TIERS.map((tier, ti) => {
+          const list = inRow.filter((d) => tierIndex(d) === ti);
+          return Object.assign(compare(metric, list), { tier, tierShort: TIER_SHORT[ti], devCount: list.length });
+        });
+        for (const c of cells) c.lowSample = c.n < MIN_GROUP_DEVS || c.pct == null;
+        const base = cells[0];
+        for (const c of cells.slice(1)) {
+          if (c.lowSample || base.lowSample) continue;
+          const h = 1.96 * Math.sqrt(c.sePct ** 2 + base.sePct ** 2);
+          c.lift = c.score - base.score;
+          c.liftLo = c.lift - h; c.liftHi = c.lift + h;
+          c.liftSig = c.liftLo > 0 || c.liftHi < 0;
+        }
+        return { row: rv, cells, devCount: inRow.length };
+      });
     }
 
     // Time series. xMode 'calendar' = month; 'relative' = months since the developer's split month.
@@ -326,8 +361,8 @@ window.AID = window.AID || {};
     const windowOf = (p) => { const m = allRowsInRange.filter((r) => phaseOf(r) === p).map((r) => r.mi); return m.length ? [Math.min(...m), Math.max(...m)] : null; };
 
     return {
-      ds, state, devs, months, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS,
-      splitOf, phaseOf, rowsOf, tierOf, groupOf, usageAfter, phaseMeans, compare, compareByGroup, groupValues,
+      ds, state, devs, months, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
+      splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, compareCross, groupValues,
       adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,
       beforeWindow: windowOf('before'), afterWindow: windowOf('after'),
     };
@@ -335,5 +370,5 @@ window.AID = window.AID || {};
 
   function range(a, b) { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; }
 
-  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, OTHER };
+  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, NON_ADOPTER_DAYS, OTHER };
 })(window.AID);

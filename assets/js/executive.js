@@ -101,7 +101,8 @@ window.AID = window.AID || {};
       ? 'Each developer is split at their own adoption month (first month with ' + ctx.thr + '+ Cursor active days). Non-adopters split at the median adoption month.'
       : 'Split at the company rollout month, ' + AID.data.monthLabel(ctx.rolloutIdx, true) + (ctx.state.settings.rollout ? '' : ' (auto-detected)') + '.';
     left.appendChild(el('p.method-note', {
-      text: modeText + (ctx.ramp ? ' ' + ctx.ramp + ' ramp-up month(s) excluded.' : '') + ' Before: ' + windowText(ctx.beforeWindow) + '. After: ' + windowText(ctx.afterWindow) + '. ' +
+      text: modeText + (ctx.ramp ? ' ' + ctx.ramp + ' ramp-up month(s) excluded.' : '') +
+        (ctx.onboarding.months && ctx.onboarding.newHires ? ' The first ' + ctx.onboarding.months + ' month(s) of ' + ctx.onboarding.newHires + ' new hires are excluded as onboarding.' : '') + ' Before: ' + windowText(ctx.beforeWindow) + '. After: ' + windowText(ctx.afterWindow) + '. ' +
         head.n + ' developers have ' + AID.analysis.MIN_MONTHS_PER_SIDE + '+ months on both sides; each is compared with their own baseline.',
     }));
 
@@ -124,43 +125,58 @@ window.AID = window.AID || {};
   }
 
   // ---------------- KPI tiles ----------------
+  // Each tile leads with the before → after change. The before and after values are the small print.
   function kpiGrid(ctx, keyRes, quality) {
     const grid = el('div.kpi-grid');
     const t = AID.charts.theme();
-    const adopt = ctx.adoptionSeries();
-    const lastI = lastIndex(adopt.active);
     const markerIdx = ctx.perDev ? null : ctx.months.indexOf(ctx.rolloutIdx);
+    const signed = (v, f) => (v > 0 ? '+' : v < 0 ? '−' : '') + f(Math.abs(v));
 
-    // Adoption tile
-    grid.appendChild(tile('AI adoption', 'Cursor', lastI >= 0 ? Math.round(adopt.active[lastI] * 100) + '%' : '—', 'active',
-      [el('span', { text: 'used Cursor ' + ctx.thr + '+ days in ' + (lastI >= 0 ? AID.data.monthLabel(adopt.xs[lastI], true) : '—') })],
+    // Adoption tile: share of developer-months with the active threshold, before vs after.
+    const adopt = ctx.adoptionSeries();
+    const share = phaseShare(ctx, (r) => r.v.activeDays >= ctx.thr);
+    const pts = share.b != null && share.a != null ? share.a - share.b : null;
+    grid.appendChild(tile('AI adoption', 'Cursor', pts != null ? signed(Math.round(pts * 100), String) : '—', pts != null ? 'pts' : '', null,
+      [el('span', { text: pts != null ? pct0(share.b) + ' → ' + pct0(share.a) + ' of developers used Cursor ' + ctx.thr + '+ days / mo' : 'Not enough data' })],
       AID.charts.sparkline(adopt.active, { color: t.series[0], markerIndex: markerIdx, zero: true })));
 
-    // Spend tile
+    // Spend tile: change in Cursor spend per developer per month.
+    const sp = ctx.compare('spendDollars');
+    const cppRes = ctx.compare('costPerMergedPr');
     const spend = ctx.series('spendDollars', { agg: 'mean' }).series[0];
-    const sLast = spend ? lastIndex(spend.values) : -1;
-    const cpp = ctx.series('costPerMergedPr', { agg: 'mean' }).series[0];
-    grid.appendChild(tile('Cursor spend', 'Cursor', sLast >= 0 ? F.value(spend.values[sLast], 'usd') : '—', '/ dev / mo',
-      [el('span', { text: 'Cost per merged PR: ' + (cpp && lastIndex(cpp.values) >= 0 ? F.value(cpp.values[lastIndex(cpp.values)], 'usd') : '—') })],
+    grid.appendChild(tile('Cursor spend', 'Cursor', sp.diff != null ? signed(sp.diff, (v) => F.value(v, 'usd')) : '—', sp.diff != null ? '/ dev / mo' : '', null,
+      [el('span', { text: sp.diff != null ? F.value(sp.before, 'usd') + ' → ' + F.value(sp.after, 'usd') + ' · ' + F.value(cppRes.after, 'usd') + ' per merged PR' : 'Not enough data' })],
       spend ? AID.charts.sparkline(spend.values, { markerIndex: markerIdx, zero: true }) : null));
 
     for (const c of keyRes.concat([quality])) {
       const m = AID.M[c.key];
       const s = ctx.series(c.key, { agg: 'mean' }).series[0];
-      const unit = m.unit === 'count' ? '/ dev / mo' : '';
-      const value = c.after != null ? F.metric(c.after, c.key, { short: m.unit !== 'count' }) : '—';
-      grid.appendChild(tile(m.label, m.source, value, unit,
-        [statusChip(c), el('span', { text: c.pct != null ? F.pct(c.pct) + ' vs ' + F.metric(c.before, c.key, { short: true }) : 'Not enough data' })],
+      const unit = m.unit === 'count' ? ' / dev / mo' : '';
+      const tone = c.status === 'improved' ? 'good' : c.status === 'worse' ? 'bad' : null;
+      grid.appendChild(tile(m.label, m.source, c.pct != null ? F.pct(c.pct) : '—', '', tone,
+        [statusChip(c), el('span', { text: c.pct != null ? F.metric(c.before, c.key, { short: true }) + ' → ' + F.metric(c.after, c.key, { short: true }) + unit : 'Not enough data' })],
         s ? AID.charts.sparkline(s.values, { markerIndex: markerIdx }) : null,
         m.desc ? m.desc + (c.lo != null ? ' ' + ciText(c) + '.' : '') : ciText(c)));
     }
     return grid;
   }
 
-  function tile(label, src, value, unit, meta, spark, title) {
+  // Share of before-period and after-period developer-months that pass a test.
+  function phaseShare(ctx, test) {
+    const n = { before: 0, after: 0 }, k = { before: 0, after: 0 };
+    for (const d of ctx.devs) for (const r of ctx.rowsOf(d)) {
+      const p = ctx.phaseOf(r);
+      if (!p) continue;
+      n[p]++; if (test(r)) k[p]++;
+    }
+    return { b: n.before ? k.before / n.before : null, a: n.after ? k.after / n.after : null };
+  }
+  function pct0(v) { return Math.round(v * 100) + '%'; }
+
+  function tile(label, src, value, unit, tone, meta, spark, title) {
     return el('div.card.kpi', { title: title || null },
       el('div.kpi-label', el('span', { text: label }), el('span.src', { text: src })),
-      el('div.kpi-value', value, unit ? el('span.unit', { text: unit }) : null),
+      el('div.kpi-value' + (tone ? '.' + tone : ''), value, unit ? el('span.unit', { text: unit }) : null),
       el('div.kpi-meta', meta),
       el('div.kpi-spark', spark));
   }

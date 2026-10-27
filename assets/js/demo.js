@@ -102,7 +102,7 @@ window.AID = window.AID || {};
         if (pilot) adopt = PILOT + ri(0, 1);
         else { adopt = ROLLOUT; while (rnd() > p.org.speed && adopt < N_MONTHS - 2) adopt++; }
       }
-      const startM = rnd() < 0.07 ? ri(3, 16) : 0;
+      const startM = rnd() < 0.15 ? ri(3, 18) : 0; // ~15% are new hires during the window
       const endM = rnd() < 0.05 ? ri(12, N_MONTHS - 2) : N_MONTHS - 1;
       const quality = p.org.name === 'Customer Experience' ? 1 : -0.4;
       for (let m = startM; m <= endM; m++) {
@@ -118,7 +118,9 @@ window.AID = window.AID || {};
         const intensity = activeDays / 20;
         const maturity = since >= 0 ? Math.min(1, (since + 1) / 6) : 0;
         const effect = p.org.effect * p.teamEffect * levelEffect[p.lv] * intensity * (0.4 + 0.6 * maturity);
-        const prod = skill * season * trend;
+        // New hires ramp up from ~30% output in their first month to full output by their fourth month.
+        const onboarding = startM > 0 ? Math.min(1, 0.3 + (0.7 * (m - startM)) / 3) : 1;
+        const prod = skill * season * trend * onboarding;
 
         const prsMerged = poisson(base.pr * prod * (1 + effect));
         const prsOpened = prsMerged + poisson(0.8 + 0.4 * intensity);

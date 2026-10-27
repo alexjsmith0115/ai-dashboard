@@ -6,6 +6,8 @@ window.AID = window.AID || {};
   const MIN_MONTHS_PER_SIDE = 2; // a developer needs this many months before AND after to count
   const MIN_GROUP_DEVS = 5;      // groups smaller than this are flagged as low sample
   const NON_ADOPTER_DAYS = 1;    // average active days / month below this = non-adopter
+  // Any of these > 0 in a month means the developer was working. The first such month is their start month.
+  const WORK_KEYS = ['prsOpened', 'prsMerged', 'throughput', 'thoughputWithSubtasks', 'storyPoints', 'additions', 'activeDays'];
   const OTHER = 'Other';
 
   // ---------- Basic stats ----------
@@ -70,17 +72,28 @@ window.AID = window.AID || {};
   function buildContext(ds, state) {
     const s = state.settings, f = state.filters;
     const thr = s.activeDays, hi = s.highDays;
+    const onboard = s.onboard || 0;
+
+    // Start month: first month with any work. A developer whose start is after the first month of the data is a new hire.
+    // Their first `onboard` months are onboarding: those rows are left out of every calculation.
+    const firstMonth = ds.months[0];
+    for (const d of ds.devs) {
+      const r0 = d.rows.find((r) => WORK_KEYS.some((k) => r.v[k] > 0));
+      d.startIdx = r0 ? r0.mi : null;
+      d.isNewHire = d.startIdx != null && d.startIdx > firstMonth;
+    }
+    const isOnboarding = (r) => r.dev.startIdx == null || r.mi < r.dev.startIdx || (r.dev.isNewHire && r.mi - r.dev.startIdx < onboard);
 
     // Per-developer adoption month: first month at or above the active-days threshold (unfiltered data).
     for (const d of ds.devs) {
       d.adoptIdx = null;
-      for (const r of d.rows) if (r.v.activeDays >= thr) { d.adoptIdx = r.mi; break; }
+      for (const r of d.rows) if (!isOnboarding(r) && r.v.activeDays >= thr) { d.adoptIdx = r.mi; break; }
     }
     // Suggested company rollout: first month where >= 20% of developers with data are active.
     let autoRollout = null;
     for (const mi of ds.months) {
       let n = 0, a = 0;
-      for (const r of ds.rows) if (r.mi === mi && r.dev.isIC) { n++; if (r.v.activeDays >= thr) a++; }
+      for (const r of ds.rows) if (r.mi === mi && r.dev.isIC && !isOnboarding(r)) { n++; if (r.v.activeDays >= thr) a++; }
       if (n && a / n >= 0.2) { autoRollout = mi; break; }
     }
     if (autoRollout == null) autoRollout = ds.months[Math.floor(ds.months.length / 2)];
@@ -91,7 +104,7 @@ window.AID = window.AID || {};
     const toIdx = f.to ? AID.data.monthIndex(f.to) : ds.months[ds.months.length - 1];
     const months = ds.months.filter((m) => m >= fromIdx && m <= toIdx);
 
-    const devs = ds.devs.filter((d) => d.rows.length
+    const devsInScope = ds.devs.filter((d) => d.rows.length
       && (!f.org || d.org === f.org) && (!f.domain || d.domain === f.domain)
       && (!f.team || d.team === f.team) && (!f.level || d.level === f.level)
       && (!f.icOnly || d.isIC));
@@ -107,8 +120,15 @@ window.AID = window.AID || {};
     const rowsCache = new Map();
     const rowsOf = (d) => {
       let rs = rowsCache.get(d);
-      if (!rs) { rs = d.rows.filter((r) => r.mi >= fromIdx && r.mi <= toIdx); rowsCache.set(d, rs); }
+      if (!rs) { rs = d.rows.filter((r) => r.mi >= fromIdx && r.mi <= toIdx && !isOnboarding(r)); rowsCache.set(d, rs); }
       return rs;
+    };
+    // Developers who are still onboarding for the whole date range have no rows left, so they drop out.
+    const devs = devsInScope.filter((d) => rowsOf(d).length);
+    const onboarding = {
+      months: onboard,
+      newHires: devsInScope.filter((d) => d.isNewHire).length,
+      skippedRows: devsInScope.reduce((n, d) => n + d.rows.filter((r) => r.mi >= fromIdx && r.mi <= toIdx && isOnboarding(r)).length, 0),
     };
 
     const tierCache = new Map();
@@ -361,7 +381,7 @@ window.AID = window.AID || {};
     const windowOf = (p) => { const m = allRowsInRange.filter((r) => phaseOf(r) === p).map((r) => r.mi); return m.length ? [Math.min(...m), Math.max(...m)] : null; };
 
     return {
-      ds, state, devs, months, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
+      ds, state, devs, months, onboarding, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
       splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, compareCross, groupValues,
       adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,
       beforeWindow: windowOf('before'), afterWindow: windowOf('after'),

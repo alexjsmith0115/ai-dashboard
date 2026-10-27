@@ -58,7 +58,7 @@ Adoption month = the developer's first month with the active-days threshold. Eac
 
 The verdict shows the headline effect with all three groups. If the results are within 3 pts, the choice of group does not drive the result.
 
-**Event study.** The chart shows the effect for each month from 6 months before adoption to 12 months after. Before adoption the points should be near 0 with no trend. A trend there means adopters were already improving before AI, and the effect is less reliable.
+**Event study.** The chart shows the effect for each month from 6 months before adoption to 12 months after. Before adoption the points should be near 0 with no trend. A trend there means adopters were already improving before AI, and the effect is less reliable. A summary line above the chart says whether the months before adoption pass this check, the first month with a clear effect, and the average effect from that month on.
 
 **Before / after split** (Explore and the *Lift* view; Settings):
 - *Company rollout month*. All developers split at one month. The default is the first month with 20%+ of developers active.

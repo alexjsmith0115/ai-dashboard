@@ -225,24 +225,17 @@ window.AID = window.AID || {};
     const rows = ctx.eventStudy(metric);
     const labels = rows.map((r) => (r.k > 0 ? '+' + r.k : String(r.k)));
     const c = card({
-      id: 'exec-event', height: 280,
+      id: 'exec-event', height: 300,
       title: 'AI effect on ' + meta.short + ' by month since adoption',
-      sub: 'Each point = actual minus expected, as a % of expected. Before adoption (gray) the points should sit near 0 with no trend: that shows adopters were not already improving. ' +
-        'After adoption (blue) the points show the effect and how fast it builds. Band = 95% confidence interval.' +
-        (meta.better === 'down' ? ' Lower is better for this metric.' : ''),
+      sub: 'Each point = actual vs expected without AI, as a % of expected. Band = 95% confidence interval.' + (meta.better === 'down' ? ' Lower is better for this metric.' : ''),
     });
     if (!rows.some((r) => r.pct != null)) { c.empty('Not enough adopters with months before and after adoption.'); return c.el; }
-    const post = rows.filter((r) => r.post && r.pct != null);
-    const preRows = rows.filter((r) => !r.post && r.pct != null);
-    if (post.length) {
-      const first = post.slice(0, 3), late = post.slice(-3);
-      const avg = (a) => a.reduce((x, r) => x + r.pct, 0) / a.length;
-      c.foot.textContent = 'Months 0–2: ' + F.pct(avg(first)) + ' on average. Last 3 months shown: ' + F.pct(avg(late)) + '.' +
-        (preRows.length ? ' Before adoption: ' + F.pct(Math.min(...preRows.map((r) => r.pct))) + ' to ' + F.pct(Math.max(...preRows.map((r) => r.pct))) + '.' : '');
-    }
+    c.box.before(el('p.chart-summary', eventSummary(rows, meta)));
     queueMicrotask(() => AID.charts.eventStudy(c.canvas, {
       labels, values: rows.map((r) => r.pct ?? null), lo: rows.map((r) => r.lo ?? null), hi: rows.map((r) => r.hi ?? null),
       post: rows.map((r) => r.post), markerIndex: rows.findIndex((r) => r.k === 0),
+      xAxisTitle: 'Months before / after each developer started using AI',
+      zones: { before: ['Before AI: should be flat near 0', 'Before AI'], after: ['After AI: the effect', 'After AI'] },
       xTitle: (i) => (rows[i].k === 0 ? 'Adoption month' : 'Month ' + labels[i] + ' vs adoption'),
       valueFmt: (v) => F.pct(v),
       tooltipLines: (i) => [rows[i].lo != null ? '95% CI ' + F.pct(rows[i].lo) + ' to ' + F.pct(rows[i].hi) : '', rows[i].n + ' developers'],
@@ -254,6 +247,35 @@ window.AID = window.AID || {};
       { label: 'Developers', num: true, value: (r) => r.n },
     ], rows, { sortCol: 0, sortDir: 1 }));
     return c.el;
+  }
+
+  // One-paragraph reading of the event study: was there a trend before AI, when does a clear effect start, and how big is it.
+  function eventSummary(rows, meta) {
+    const pre = rows.filter((r) => !r.post && r.pct != null), post = rows.filter((r) => r.post && r.pct != null);
+    const parts = [el('strong', { text: 'In short: ' })];
+    if (pre.length >= 3) {
+      const lo = Math.min(...pre.map((r) => r.pct)), hi = Math.max(...pre.map((r) => r.pct));
+      const fit = AID.analysis.linearFit(pre.map((r) => r.k), pre.map((r) => r.pct));
+      const drift = fit.slope * (pre[pre.length - 1].k - pre[0].k);
+      if (Math.max(Math.abs(lo), Math.abs(hi)) <= 0.05 && Math.abs(drift) <= 0.04) {
+        parts.push('before AI, adopters were on track (between ' + F.pct(lo, 0) + ' and ' + F.pct(hi, 0) + ', no trend). ');
+      } else {
+        parts.push('before AI, adopters were already changing (' + F.pct(pre[0].pct, 0) + ' at month ' + pre[0].k + ', ' + F.pct(pre[pre.length - 1].pct, 0) + ' at month ' + pre[pre.length - 1].k + '). Part of the effect after adoption may not come from AI. ');
+      }
+    }
+    const down = meta.better === 'down';
+    const good = (r) => (down ? r.hi < 0 : r.lo > 0), bad = (r) => (down ? r.lo > 0 : r.hi < 0);
+    const first = post.find((r) => good(r) || bad(r));
+    if (!first) {
+      parts.push('After adoption there is no clear effect in the ' + (post.length ? post[post.length - 1].k + 1 : 0) + ' months shown.');
+    } else {
+      const from = post.filter((r) => r.k >= first.k);
+      const avg = from.reduce((x, r) => x + r.pct, 0) / from.length;
+      const mo = first.k === 0 ? 'the adoption month' : 'month +' + first.k;
+      parts.push(good(first) ? 'The effect is clear from ' + mo + ' and averages ' : meta.short + ' got worse from ' + mo + ', by ',
+        el('strong', { text: F.pct(avg, 0) }), ' from then on' + (down ? ' (lower is better).' : '.'));
+    }
+    return parts;
   }
 
   // ---------------- Trend cards ----------------

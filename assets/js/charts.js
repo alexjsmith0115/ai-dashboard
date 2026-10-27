@@ -77,6 +77,7 @@ window.AID = window.AID || {};
         if (x < chart.chartArea.left || x > chart.chartArea.right) continue;
         ctx.strokeStyle = t.muted; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke();
+        if (!m.label) continue;
         ctx.fillStyle = t.text2; ctx.font = '500 11px ' + t.font; ctx.textBaseline = 'top';
         const w = ctx.measureText(m.label).width;
         const lx = x + 5 + w > chart.chartArea.right ? x - 5 - w : x + 5;
@@ -197,10 +198,33 @@ window.AID = window.AID || {};
     },
   };
 
+  // Labels for the two sides of a vertical split, e.g. before / after adoption. opts = {index, before: [long, short], after: [long, short]}
+  // Each label sits at the top, next to the split line. The short text is used when the long text does not fit.
+  const zones = {
+    id: 'zones',
+    afterDatasetsDraw(chart, _a, opts) {
+      if (!opts || opts.index == null || opts.index < 0) return;
+      const t = theme(), ctx = chart.ctx, a = chart.chartArea;
+      const x = chart.scales.x.getPixelForValue(opts.index);
+      ctx.save(); ctx.font = '500 11px ' + t.font; ctx.textBaseline = 'top';
+      const draw = (texts, side) => {
+        const room = side < 0 ? x - a.left - 12 : a.right - x - 12;
+        const text = texts.find((s) => ctx.measureText(s).width <= room);
+        if (!text) return;
+        const w = ctx.measureText(text).width, lx = side < 0 ? x - 6 - w : x + 6;
+        ctx.fillStyle = t.surface; ctx.fillRect(lx - 3, a.top + 1, w + 6, 15);
+        ctx.fillStyle = t.text2; ctx.fillText(text, lx, a.top + 3);
+      };
+      if (opts.before) draw(opts.before, -1);
+      if (opts.after) draw(opts.after, 1);
+      ctx.restore();
+    },
+  };
+
   let registered = false;
   function ensure() {
     if (registered) return;
-    Chart.register(crosshair, markers, endLabels, barLabels, pointLabels, errorBars);
+    Chart.register(crosshair, markers, endLabels, barLabels, pointLabels, errorBars, zones);
     registered = true;
   }
 
@@ -372,7 +396,7 @@ window.AID = window.AID || {};
   }
 
   // ---------- Event study: effect by month relative to adoption, with a 95% CI band ----------
-  // o: {labels, values, lo, hi, post: [bool], markerIndex, color, valueFmt, tooltipLines(i) -> [strings]}
+  // o: {labels, values, lo, hi, post: [bool], markerIndex, color, valueFmt, tooltipLines(i) -> [strings], xAxisTitle, zones: {before, after}}
   function eventStudy(canvas, o) {
     ensure();
     const t = theme();
@@ -398,10 +422,14 @@ window.AID = window.AID || {};
         interaction: { mode: 'index', intersect: false },
         layout: { padding: { top: 4, right: 8 } },
         scales: {
-          x: Object.assign(axisCommon(t), { grid: { display: false }, border: { display: true, color: t.axis }, ticks: { color: t.muted, maxRotation: 0, autoSkipPadding: 10 } }),
+          x: Object.assign(axisCommon(t), {
+            grid: { display: false }, border: { display: true, color: t.axis }, ticks: { color: t.muted, maxRotation: 0, autoSkipPadding: 10 },
+            title: { display: !!o.xAxisTitle, text: o.xAxisTitle || '', color: t.muted, font: { size: 11 }, padding: { top: 6 } },
+          }),
           y: Object.assign(axisCommon(t), {
             grid: { color: (c) => (c.tick && c.tick.value === 0 ? t.axis : t.grid), drawTicks: false },
             ticks: { color: t.muted, padding: 6, maxTicksLimit: 7, callback: fmtY },
+            grace: '8%', // headroom so the zone labels do not cover the top points
           }),
         },
         plugins: {
@@ -417,7 +445,8 @@ window.AID = window.AID || {};
             },
           }),
           crosshair: { enabled: true },
-          markers: { items: o.markerIndex != null && o.markerIndex >= 0 ? [{ index: o.markerIndex, label: 'Adoption' }] : [] },
+          markers: { items: o.markerIndex != null && o.markerIndex >= 0 ? [{ index: o.markerIndex, label: o.zones ? '' : 'Adoption' }] : [] },
+          zones: o.zones ? Object.assign({ index: o.markerIndex }, o.zones) : {},
         },
       },
     };

@@ -156,6 +156,8 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 60px; }
 .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .card-head > div:first-child { flex: 1 1 260px; min-width: 0; }
 .card-head h3 { font-size: 15px; }
+.chart-summary { font-size: 13px; color: var(--text-2); margin: -4px 0 10px; max-width: 80ch; }
+.chart-summary strong { color: var(--text); font-weight: 600; }
 .card-head .sub { color: var(--muted); font-size: 12px; margin-top: 2px; max-width: 70ch; }
 .card-controls { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
 .card-controls .field select { min-width: 0; }

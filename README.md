@@ -44,7 +44,16 @@ Blank cells:
 
 ## How the analysis works
 
-**Before / after split** (Settings):
+**AI effect (difference-in-differences).** The Executive summary uses this method.
+1. The dashboard fits a model with a *developer effect* (each developer's own level) and a *month effect* (company-wide change in that calendar month). It fits the model only on months without AI: all months of non-adopters, and the months before adoption for adopters.
+2. For each adopter month after adoption, *expected* = developer effect + month effect. *AI effect* = actual − expected.
+3. The dashboard averages the effect for each developer, then across developers. The 95% CI comes from the spread across developers.
+
+Adoption month = the developer's first month with the active-days threshold. Each adopter has their own adoption month, so the model handles a staggered rollout. The month effects remove seasonality and company-wide changes. Developer effects remove fixed differences in skill, level, and team. The model uses every developer in the date range, and the org, domain, team, and level filters only select which adopters to average. A month needs 10+ developers who have not adopted yet. If a month has fewer, its adopter months are left out.
+
+**Event study.** The chart shows the effect for each month from 6 months before adoption to 12 months after. Before adoption the points should be near 0 with no trend. A trend there means adopters were already improving before AI, and the effect is less reliable.
+
+**Before / after split** (Explore and the *Lift* view; Settings):
 - *Company rollout month*. All developers split at one month. The default is the first month with 20%+ of developers active.
 - *Each developer's adoption month*. The split is the developer's first month with the active-days threshold. Non-adopters split at the median adoption month, so they become a comparison group.
 - *Ramp-up months to skip*. This setting removes the months right after the split.
@@ -62,11 +71,12 @@ Blank cells:
 ## Dashboards
 
 **Executive summary**
-- A verdict (Yes / Partly / Not yet / No) with the headline change, its 95% CI, and the change by usage tier.
-- KPI tiles: adoption, spend, PRs merged, Jira throughput, story points, cycle time, time to merge, and reopen rate (the quality guardrail). Each tile shows the change as the large number: green = improved, red = worse. The before → after values are below it.
+- A verdict (Yes / Partly / Not yet / No) with the headline AI effect, its 95% CI, and the effect by usage tier.
+- KPI tiles: adoption, spend, PRs merged, Jira throughput, story points, cycle time, time to merge, and reopen rate (the quality guardrail). Each tile shows the change as the large number: green = improved, red = worse. Productivity tiles show the AI effect, with the actual and expected values below it.
+- The AI effect by month since adoption (event study).
 - Adoption over time, and the headline metric by usage tier over time.
 - **Which groups are most impacted?** for Org, Domain, Team, or Job level. This section has key findings, a ranked change chart (top/bottom 10 when there are many teams), adoption vs impact, and a full table.
-- **Impact by job level and AI usage**: grouped bars for each job level (or org) × usage tier, with 95% CI whiskers. Switch between *Change* and *Lift vs non-adopters*. A findings list and a matrix table compare heavy users with non-adopters at each level.
+- **Impact by job level and AI usage**: grouped bars for each job level (or org) × usage tier, with 95% CI whiskers. Switch between *AI effect* and *Lift vs non-adopters* (the before/after change minus that of non-adopters). A findings list and a matrix table compare heavy users with non-adopters at each level.
 
 **Explore**
 - Metric trends for any metric. You can group by org, domain, team, level, role, or usage tier. The x-axis can be calendar months or months since adoption.
@@ -100,4 +110,4 @@ To add or change a metric, edit `assets/js/metrics.js`. Derived metrics are calc
 
 - `contractTotalSpend` is read but not charted. It is an account-level figure, not a per-developer figure.
 - `aiLineShare` (AI lines accepted ÷ GitHub additions) is a rough signal. Not every accepted line reaches a merged PR.
-- These results show correlation, not causation. Re-orgs, process changes, and seasonality also move these metrics. Use the usage-tier comparison and the per-developer-change correlations as the strongest evidence.
+- The AI effect removes seasonality and company-wide changes. It does not remove a change that hits only the adopters in the month they adopt (for example, a team re-org in that month). Developers chose how much to use AI. Thus the effect is strong evidence, not proof. Check that the event-study points before adoption are flat, and that the effect grows with usage tier.

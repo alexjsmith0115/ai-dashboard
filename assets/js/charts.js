@@ -371,6 +371,59 @@ window.AID = window.AID || {};
     return mount(canvas, cfg);
   }
 
+  // ---------- Event study: effect by month relative to adoption, with a 95% CI band ----------
+  // o: {labels, values, lo, hi, post: [bool], markerIndex, color, valueFmt, tooltipLines(i) -> [strings]}
+  function eventStudy(canvas, o) {
+    ensure();
+    const t = theme();
+    const color = o.color || t.series[0];
+    const ptColor = o.post.map((p) => (p ? color : t.muted));
+    const fmtY = (v) => Math.round(v * 100) + '%';
+    const cfg = {
+      type: 'line',
+      data: {
+        labels: o.labels,
+        datasets: [
+          { label: 'ciHi', data: o.hi, borderWidth: 0, pointRadius: 0, pointHitRadius: 0, fill: false, spanGaps: false },
+          { label: 'ciLo', data: o.lo, borderWidth: 0, pointRadius: 0, pointHitRadius: 0, fill: '-1', backgroundColor: hexA(color, 0.14), spanGaps: false },
+          {
+            label: 'Effect', data: o.values, borderColor: color, borderWidth: 2, tension: 0, spanGaps: false,
+            pointRadius: 4, pointHoverRadius: 5.5, pointBackgroundColor: ptColor, pointBorderColor: t.surface, pointBorderWidth: 2,
+            pointHitRadius: 12,
+            segment: { borderColor: (c) => (o.post[c.p1DataIndex] ? color : t.muted), borderDash: (c) => (o.post[c.p1DataIndex] ? undefined : [4, 3]) },
+          },
+        ],
+      },
+      options: {
+        interaction: { mode: 'index', intersect: false },
+        layout: { padding: { top: 4, right: 8 } },
+        scales: {
+          x: Object.assign(axisCommon(t), { grid: { display: false }, border: { display: true, color: t.axis }, ticks: { color: t.muted, maxRotation: 0, autoSkipPadding: 10 } }),
+          y: Object.assign(axisCommon(t), {
+            grid: { color: (c) => (c.tick && c.tick.value === 0 ? t.axis : t.grid), drawTicks: false },
+            ticks: { color: t.muted, padding: 6, maxTicksLimit: 7, callback: fmtY },
+          }),
+        },
+        plugins: {
+          legend: { display: false },
+          filler: { propagate: false },
+          tooltip: tooltip(t, {
+            displayColors: false,
+            filter: (c) => c.datasetIndex === 2 && c.raw != null,
+            callbacks: {
+              title: (items) => (o.xTitle ? o.xTitle(items[0].dataIndex) : items[0].label),
+              label: (c) => (o.valueFmt ? o.valueFmt(c.raw) : fmtY(c.raw)),
+              afterLabel: (c) => (o.tooltipLines ? o.tooltipLines(c.dataIndex) : null),
+            },
+          }),
+          crosshair: { enabled: true },
+          markers: { items: o.markerIndex != null && o.markerIndex >= 0 ? [{ index: o.markerIndex, label: 'Adoption' }] : [] },
+        },
+      },
+    };
+    return mount(canvas, cfg);
+  }
+
   // ---------- Stacked bars ----------
   // o: {labels, series:[{name, values, color}], unit, percent}
   function stacked(canvas, o) {
@@ -501,5 +554,5 @@ window.AID = window.AID || {};
     return svg;
   }
 
-  AID.charts = { theme, applyDefaults, destroyAll, gc, colorFor, line, bars, grouped, stacked, scatter, diverging, hexA, mix, sparkline };
+  AID.charts = { theme, applyDefaults, destroyAll, gc, colorFor, line, bars, grouped, eventStudy, stacked, scatter, diverging, hexA, mix, sparkline };
 })(window.AID);

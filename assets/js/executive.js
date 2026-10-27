@@ -29,12 +29,13 @@ window.AID = window.AID || {};
     const page = el('div.page');
     root.appendChild(page);
 
-    const head = ctx.compare(metric);
-    const keyRes = AID.KEY_PRODUCTIVITY.map((k) => ctx.compare(k));
-    const quality = ctx.compare(AID.QUALITY_GUARDRAIL);
+    // The executive page uses the difference-in-differences (DiD) effect. Explore keeps the plain before/after change.
+    const head = ctx.did(metric);
+    const keyRes = AID.KEY_PRODUCTIVITY.map((k) => ctx.did(k));
+    const quality = ctx.did(AID.QUALITY_GUARDRAIL);
     const tiers = ctx.TIERS.map((tier) => {
       const list = ctx.devs.filter((d) => ctx.tierOf(d) === tier);
-      return Object.assign(ctx.compare(metric, list), { tier, devCount: list.length });
+      return Object.assign(ctx.did(metric, list), { tier, devCount: list.length });
     });
 
     page.appendChild(el('div.section-head',
@@ -43,6 +44,7 @@ window.AID = window.AID || {};
 
     page.appendChild(verdictCard(ctx, head, keyRes, quality, tiers, metric));
     page.appendChild(kpiGrid(ctx, keyRes, quality));
+    page.appendChild(eventStudyCard(ctx, metric));
 
     // ---- Trends ----
     const grid = el('div.grid-2');
@@ -54,7 +56,7 @@ window.AID = window.AID || {};
     page.appendChild(groupsSection(ctx, app, metric, meta, t));
     page.appendChild(crossSection(ctx, app, metric, meta, t));
 
-    page.appendChild(el('p.card-foot', { text: 'Correlation is not causation. Before/after changes also include seasonality, re-orgs, and process changes. The usage-level comparison (heavy AI users vs non-adopters over the same months) is the best guide to how much of a change comes from AI.' }));
+    page.appendChild(el('p.card-foot', { text: 'AI effect = actual value minus the value expected without AI. The expected value comes from each developer\'s own level before adoption plus the company-wide change in that month, measured on developers who had not adopted AI yet. This removes seasonality and company-wide changes. It cannot remove changes that hit only the adopters at the time they adopted (for example, a team re-org in the same month). Developers chose how much to use AI, so read the effects as strong evidence, not proof.' }));
   }
 
   // ---------------- Verdict ----------------
@@ -76,48 +78,54 @@ window.AID = window.AID || {};
       el('div.verdict-answer', answerChip(kind, word)),
       el('div.hero-row',
         el('div.hero', { text: head.pct != null ? F.pct(head.pct) : '—' }),
-        el('div.hero-label', perDevLabel(metric), el('div', { style: { color: 'var(--muted)', fontSize: '12px', marginTop: '4px' }, text: head.pct != null ? F.metric(head.before, metric) + ' → ' + F.metric(head.after, metric) + ' · ' + ciText(head) : '' }))));
+        el('div.hero-label', 'AI effect on ' + perDevLabel(metric).replace(/^[A-Z](?=[a-z])/, (c) => c.toLowerCase()), el('div', { style: { color: 'var(--muted)', fontSize: '12px', marginTop: '4px' }, text: head.pct != null ? F.metric(head.after, metric) + ' actual vs ' + F.metric(head.before, metric) + ' expected without AI · ' + ciText(head) : '' }))));
 
     const parts = [];
     if (k) {
-      parts.push(el('strong', { text: improved + ' of ' + k }), ' core productivity metrics improved');
+      parts.push('AI improved ', el('strong', { text: improved + ' of ' + k }), ' core productivity metrics');
       parts.push(worse ? [', ', el('strong', { text: String(worse) }), ' got worse. '] : ' and none got worse. ');
     }
     if (quality.status !== 'nodata') {
       const q = quality.status === 'worse' ? 'got worse' : quality.status === 'improved' ? 'improved' : 'held steady';
       parts.push('Quality (reopen rate) ', el('strong', { text: q }), ' (' + F.pct(quality.pct) + '). ');
     }
-    // Compare heavy users with non-adopters; fall back to light users when there are too few non-adopters.
-    const lo = tiers[0].n >= AID.analysis.MIN_GROUP_DEVS ? tiers[0] : tiers[1], hi = tiers[3];
-    if (lo.pct != null && hi.pct != null) {
-      const gap = hi.score - lo.score;
-      const loName = lo === tiers[0] ? 'non-adopters' : 'light users';
-      parts.push('Heavy AI users changed ', el('strong', { text: F.pct(hi.pct) }), ' vs ', el('strong', { text: F.pct(lo.pct) }),
-        ' for ' + loName + ' over the same period — ', gap > 0.02 ? 'a sign that AI drives part of the change.' : gap < -0.02 ? 'so AI is not the likely cause.' : 'too small a gap to credit AI.');
+    // Dose: if AI drives the change, the effect grows with usage.
+    const lt = tiers[1], hv = tiers[3];
+    if (lt.pct != null && hv.pct != null) {
+      const gap = hv.score - lt.score;
+      parts.push('The effect is ', el('strong', { text: F.pct(hv.pct) }), ' for heavy AI users vs ', el('strong', { text: F.pct(lt.pct) }), ' for light users — ',
+        gap > 0.02 ? 'it grows with usage, which is a sign that AI causes it.' : gap < -0.02 ? 'it does not grow with usage, so AI is not the likely cause.' : 'too small a gap to link the effect to usage.');
     }
     left.appendChild(el('p.verdict-text', parts));
 
-    const modeText = ctx.perDev
-      ? 'Each developer is split at their own adoption month (first month with ' + ctx.thr + '+ Cursor active days). Non-adopters split at the median adoption month.'
-      : 'Split at the company rollout month, ' + AID.data.monthLabel(ctx.rolloutIdx, true) + (ctx.state.settings.rollout ? '' : ' (auto-detected)') + '.';
+    const fit = ctx.didFit(metric);
     left.appendChild(el('p.method-note', {
-      text: modeText + (ctx.ramp ? ' ' + ctx.ramp + ' ramp-up month(s) excluded.' : '') +
-        (ctx.onboarding.months && ctx.onboarding.newHires ? ' The first ' + ctx.onboarding.months + ' month(s) of ' + ctx.onboarding.newHires + ' new hires are excluded as onboarding.' : '') + ' Before: ' + windowText(ctx.beforeWindow) + '. After: ' + windowText(ctx.afterWindow) + '. ' +
-        head.n + ' developers have ' + AID.analysis.MIN_MONTHS_PER_SIDE + '+ months on both sides; each is compared with their own baseline.',
+      text: 'Method: difference-in-differences. Each adopter is split at their own adoption month (first month with ' + ctx.thr + '+ Cursor active days). ' +
+        'Their results after adoption are compared with the value expected from their own level before adoption plus the company-wide change in the same month. ' +
+        'The company-wide change comes from ' + fit.controlDevs + ' non-adopters and from adopters who have not adopted yet. ' +
+        head.n + ' adopters have ' + AID.analysis.MIN_MONTHS_PER_SIDE + '+ months on both sides.' +
+        (ctx.ramp ? ' ' + ctx.ramp + ' ramp-up month(s) after adoption excluded.' : '') +
+        (ctx.onboarding.months && ctx.onboarding.newHires ? ' The first ' + ctx.onboarding.months + ' month(s) of ' + ctx.onboarding.newHires + ' new hires are excluded as onboarding.' : '') +
+        (fit.dropped ? ' ' + fit.dropped + ' adopter-months are left out because fewer than ' + AID.analysis.MIN_CONTROL_DEVS + ' developers had not adopted yet in that month.' : ''),
     }));
 
     // Right side: change by AI usage tier
     const maxAbs = Math.max(0.01, ...tiers.map((x) => Math.abs(x.score || 0)));
     const t = AID.charts.theme();
     const rows = tiers.map((x, i) => {
+      if (i === 0) {
+        return el('div.score-row', { style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
+          el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.devCount + ' developers · the comparison group' })),
+          el('div.val', { text: '0%', style: { color: 'var(--muted)' } }));
+      }
       const w = x.score != null ? (Math.abs(x.score) / maxAbs) * 100 : 0;
       const bar = el('div', { style: { height: '8px', borderRadius: '4px', width: Math.max(2, w) + '%', background: t.tiers[i], marginTop: '5px' } });
       return el('div.score-row', { style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
-        el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.n + ' developers' }), bar),
+        el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.n + ' developers' + (x.lo != null ? ' · ' + ciText(x) : '') }), bar),
         el('div.val', { text: x.pct != null ? F.pct(x.pct) : '—' }));
     });
     const right = el('div.verdict-side',
-      el('p.verdict-q', { text: 'Change in ' + meta.short + ' by AI usage level' }),
+      el('p.verdict-q', { text: 'AI effect on ' + meta.short + ' by AI usage level' }),
       el('div.scorecard', rows),
       el('p.method-note', { text: 'Usage level = average Cursor active days per month in the after period.' }));
 
@@ -125,7 +133,7 @@ window.AID = window.AID || {};
   }
 
   // ---------------- KPI tiles ----------------
-  // Each tile leads with the before → after change. The before and after values are the small print.
+  // Each tile leads with the change. Productivity tiles show the DiD effect: actual vs expected without AI.
   function kpiGrid(ctx, keyRes, quality) {
     const grid = el('div.kpi-grid');
     const t = AID.charts.theme();
@@ -154,7 +162,7 @@ window.AID = window.AID || {};
       const unit = m.unit === 'count' ? ' / dev / mo' : '';
       const tone = c.status === 'improved' ? 'good' : c.status === 'worse' ? 'bad' : null;
       grid.appendChild(tile(m.label, m.source, c.pct != null ? F.pct(c.pct) : '—', '', tone,
-        [statusChip(c), el('span', { text: c.pct != null ? F.metric(c.before, c.key, { short: true }) + ' → ' + F.metric(c.after, c.key, { short: true }) + unit : 'Not enough data' })],
+        [statusChip(c), el('span', { text: c.pct != null ? F.metric(c.after, c.key, { short: true }) + ' vs ' + F.metric(c.before, c.key, { short: true }) + ' expected' + unit : 'Not enough data' })],
         s ? AID.charts.sparkline(s.values, { markerIndex: markerIdx }) : null,
         m.desc ? m.desc + (c.lo != null ? ' ' + ciText(c) + '.' : '') : ciText(c)));
     }
@@ -181,6 +189,43 @@ window.AID = window.AID || {};
       el('div.kpi-spark', spark));
   }
   function lastIndex(a) { for (let i = a.length - 1; i >= 0; i--) if (a[i] != null) return i; return -1; }
+
+  // ---------------- Event study ----------------
+  function eventStudyCard(ctx, metric) {
+    const meta = AID.M[metric];
+    const rows = ctx.eventStudy(metric);
+    const labels = rows.map((r) => (r.k > 0 ? '+' + r.k : String(r.k)));
+    const c = card({
+      id: 'exec-event', height: 280,
+      title: 'AI effect on ' + meta.short + ' by month since adoption',
+      sub: 'Each point = actual minus expected, as a % of expected. Before adoption (gray) the points should sit near 0 with no trend: that shows adopters were not already improving. ' +
+        'After adoption (blue) the points show the effect and how fast it builds. Band = 95% confidence interval.' +
+        (meta.better === 'down' ? ' Lower is better for this metric.' : ''),
+    });
+    if (!rows.some((r) => r.pct != null)) { c.empty('Not enough adopters with months before and after adoption.'); return c.el; }
+    const post = rows.filter((r) => r.post && r.pct != null);
+    const preRows = rows.filter((r) => !r.post && r.pct != null);
+    if (post.length) {
+      const first = post.slice(0, 3), late = post.slice(-3);
+      const avg = (a) => a.reduce((x, r) => x + r.pct, 0) / a.length;
+      c.foot.textContent = 'Months 0–2: ' + F.pct(avg(first)) + ' on average. Last 3 months shown: ' + F.pct(avg(late)) + '.' +
+        (preRows.length ? ' Before adoption: ' + F.pct(Math.min(...preRows.map((r) => r.pct))) + ' to ' + F.pct(Math.max(...preRows.map((r) => r.pct))) + '.' : '');
+    }
+    queueMicrotask(() => AID.charts.eventStudy(c.canvas, {
+      labels, values: rows.map((r) => r.pct ?? null), lo: rows.map((r) => r.lo ?? null), hi: rows.map((r) => r.hi ?? null),
+      post: rows.map((r) => r.post), markerIndex: rows.findIndex((r) => r.k === 0),
+      xTitle: (i) => (rows[i].k === 0 ? 'Adoption month' : 'Month ' + labels[i] + ' vs adoption'),
+      valueFmt: (v) => F.pct(v),
+      tooltipLines: (i) => [rows[i].lo != null ? '95% CI ' + F.pct(rows[i].lo) + ' to ' + F.pct(rows[i].hi) : '', rows[i].n + ' developers'],
+    }));
+    c.setTable(() => table([
+      { label: 'Months since adoption', value: (r) => r.k, format: (v, r) => (r.k > 0 ? '+' + r.k : String(r.k)) },
+      { label: 'Effect', num: true, value: (r) => r.pct, format: (v) => F.pct(v) },
+      { label: '95% CI', num: true, value: (r) => r.lo, format: (v, r) => (r.lo == null ? '—' : F.pct(r.lo, 0) + ' to ' + F.pct(r.hi, 0)) },
+      { label: 'Developers', num: true, value: (r) => r.n },
+    ], rows, { sortCol: 0, sortDir: 1 }));
+    return c.el;
+  }
 
   // ---------------- Trend cards ----------------
   function adoptionCard(ctx, t) {
@@ -238,25 +283,25 @@ window.AID = window.AID || {};
       el('h2', { text: 'Which groups are most impacted by AI?' }),
       el('div', { style: { marginLeft: 'auto' } }, seg('Group level', GROUP_LEVELS, level, (v) => app.update({ exec: { groupBy: v } })))));
 
-    const rows = ctx.compareByGroup(metric, level).filter((r) => r.pct != null);
-    if (!rows.length) { wrap.appendChild(el('div.card', el('p.empty-note', { text: 'Not enough before/after data for these groups.' }))); return wrap; }
+    const rows = ctx.didByGroup(metric, level).filter((r) => r.pct != null);
+    if (!rows.length) { wrap.appendChild(el('div.card', el('p.empty-note', { text: 'Not enough adopters with months before and after adoption in these groups.' }))); return wrap; }
     rows.sort((a, b) => b.score - a.score);
     const reliable = rows.filter((r) => !r.lowSample);
 
     // Insights
     const ins = el('ul.insights');
     const best = reliable[0], worst = reliable[reliable.length - 1];
-    if (best) ins.appendChild(el('li', el('span', 'Largest improvement: ', el('strong', { text: best.group }), ' (' + F.pct(best.pct) + ', ' + Math.round((best.adoption || 0) * 100) + '% adoption).')));
-    if (worst && worst !== best) ins.appendChild(el('li', el('span', 'Smallest change: ', el('strong', { text: worst.group }), ' (' + F.pct(worst.pct) + ', ' + Math.round((worst.adoption || 0) * 100) + '% adoption).')));
+    if (best) ins.appendChild(el('li', el('span', 'Largest AI effect: ', el('strong', { text: best.group }), ' (' + F.pct(best.pct) + ', ' + Math.round((best.adoption || 0) * 100) + '% adoption).')));
+    if (worst && worst !== best) ins.appendChild(el('li', el('span', 'Smallest AI effect: ', el('strong', { text: worst.group }), ' (' + F.pct(worst.pct) + ', ' + Math.round((worst.adoption || 0) * 100) + '% adoption).')));
     const xs = reliable.map((r) => r.adoption), ys = reliable.map((r) => r.score);
     const corr = reliable.length >= 4 ? AID.analysis.correlate(xs, ys, 'pearson') : { r: null };
     if (corr.r != null) {
       const s = Math.abs(corr.r) >= 0.5 ? 'strongly' : Math.abs(corr.r) >= 0.3 ? 'moderately' : 'weakly';
       ins.appendChild(el('li', el('span', 'Across ' + levelLabel + 's, adoption and improvement are ', el('strong', { text: s + (corr.r >= 0 ? ' linked' : ' inversely linked') }), ' (r = ' + corr.r.toFixed(2) + '). ' +
-        (corr.r >= 0.3 ? 'Groups that use AI more improved more.' : corr.r <= -0.3 ? 'Higher adoption did not bring larger gains.' : 'Adoption alone does not explain the differences.'))));
+        (corr.r >= 0.3 ? 'Groups that use AI more got a larger effect.' : corr.r <= -0.3 ? 'Higher adoption did not bring larger gains.' : 'Adoption alone does not explain the differences.'))));
     }
     const small = rows.length - reliable.length;
-    if (small) ins.appendChild(el('li', el('span', { text: small + ' ' + levelLabel + (small > 1 ? 's have' : ' has') + ' fewer than ' + AID.analysis.MIN_GROUP_DEVS + ' developers with before/after data. They are left out of the chart and ranking, and shown pale in the table.' })));
+    if (small) ins.appendChild(el('li', el('span', { text: small + ' ' + levelLabel + (small > 1 ? 's have' : ' has') + ' fewer than ' + AID.analysis.MIN_GROUP_DEVS + ' adopters with months before and after adoption. They are left out of the chart and ranking, and shown pale in the table.' })));
     wrap.appendChild(el('div.card', el('h3', { text: 'Key findings', style: { fontSize: '15px', marginBottom: '10px' } }), ins));
 
     const grid = el('div.grid-3-2');
@@ -271,7 +316,7 @@ window.AID = window.AID || {};
     }
     const barCard = card({
       id: 'exec-groups', height: Math.max(180, shown.length * 26 + 50),
-      title: 'Change in ' + meta.short + ' by ' + levelLabel,
+      title: 'AI effect on ' + meta.short + ' by ' + levelLabel,
       sub: 'Blue = better, red = worse. Pale bars are not statistically clear (the 95% confidence interval includes zero).',
     });
     grid.appendChild(barCard.el);
@@ -279,19 +324,19 @@ window.AID = window.AID || {};
     queueMicrotask(() => AID.charts.bars(barCard.canvas, {
       labels: shown.map((r) => r.group), values: shown.map((r) => r.pct), horizontal: true,
       colors: shown.map((r) => changeColor(r, t)), axisFmt: (v) => Math.round(v * 100) + '%', valueFmt: (v) => F.pct(v, 0),
-      tooltipLines: (i) => { const r = shown[i]; return [F.metric(r.before, metric) + ' → ' + F.metric(r.after, metric), ciText(r), r.n + ' developers · ' + Math.round((r.adoption || 0) * 100) + '% adoption']; },
+      tooltipLines: (i) => { const r = shown[i]; return [F.metric(r.after, metric) + ' actual vs ' + F.metric(r.before, metric) + ' expected', ciText(r), r.n + ' developers · ' + Math.round((r.adoption || 0) * 100) + '% adoption']; },
     }));
     barCard.setTable(() => groupTable(rows, metric, level));
 
     // Adoption vs impact scatter
-    const sc = card({ id: 'exec-adopt-impact', height: Math.min(Math.max(260, shown.length * 26 + 50), 420), title: 'Adoption vs impact', sub: 'Each dot is a ' + levelLabel + '. Up and to the right = high adoption and a large improvement.' });
+    const sc = card({ id: 'exec-adopt-impact', height: Math.min(Math.max(260, shown.length * 26 + 50), 420), title: 'Adoption vs impact', sub: 'Each dot is a ' + levelLabel + '. Up and to the right = high adoption and a large AI effect.' });
     grid.appendChild(sc.el);
     const pts = reliable.map((r) => ({ x: r.adoption * 100, y: r.score * 100, r }));
     const labelIdx = new Set(pts.length <= 8 ? pts.map((_, i) => i) : [0, 1, 2, pts.length - 1, pts.length - 2]);
     const fit = pts.length >= 4 ? AID.analysis.linearFit(pts.map((p) => p.x), pts.map((p) => p.y)) : null;
     queueMicrotask(() => AID.charts.scatter(sc.canvas, {
       datasets: [{ name: levelLabel, points: pts, color: t.series[0] }], radius: 5, alpha: 0.85, zeroLines: true,
-      xUnit: 'pct', yUnit: 'pct', xLabel: 'Adoption (share of months active)', yLabel: 'Improvement in ' + meta.short,
+      xUnit: 'pct', yUnit: 'pct', xLabel: 'Adoption (share of months active)', yLabel: 'AI effect on ' + meta.short,
       fit: fit ? Object.assign(fit, { x0: Math.min(...pts.map((p) => p.x)), x1: Math.max(...pts.map((p) => p.x)) }) : null,
       title: (p) => p.r.group,
       label: (p) => ['Adoption ' + Math.round(p.x) + '%', meta.short + ' ' + F.pct(p.r.pct), p.r.n + ' developers'],
@@ -301,7 +346,7 @@ window.AID = window.AID || {};
 
     // Full table
     wrap.appendChild(el('div.card',
-      el('div.card-head', el('div', el('h3', { text: 'All ' + levelLabel + 's' }), el('p.sub', { text: 'Click a column header to sort. Change = average per-developer change vs their own baseline.' }))),
+      el('div.card-head', el('div', el('h3', { text: 'All ' + levelLabel + 's' }), el('p.sub', { text: 'Click a column header to sort. AI effect = actual vs expected without AI, averaged over adopters.' }))),
       groupTable(rows, metric, level)));
     return wrap;
   }
@@ -311,54 +356,72 @@ window.AID = window.AID || {};
     if (level === 'team') cols.push({ label: 'Domain', value: (r) => r.parent }, { label: 'Manager', value: (r) => r.manager });
     if (level === 'domain') cols.push({ label: 'Org', value: (r) => r.parent });
     cols.push(
-      { label: 'Developers', num: true, value: (r) => r.n, title: 'Developers with enough months before and after' },
+      { label: 'Adopters', num: true, value: (r) => r.n, title: 'Adopters with enough months before and after adoption' },
       { label: 'Adoption', num: true, value: (r) => r.adoption, format: (v) => (v == null ? '—' : Math.round(v * 100) + '%') },
       { label: 'Avg active days', num: true, value: (r) => r.avgActiveDays, format: (v) => F.value(v, 'count') },
-      { label: 'Before', num: true, value: (r) => r.before, format: (v) => F.metric(v, metric, { short: true }) },
-      { label: 'After', num: true, value: (r) => r.after, format: (v) => F.metric(v, metric, { short: true }) },
-      { label: 'Change', num: true, value: (r) => r.pct, sortValue: (r) => r.score, format: (v) => F.pct(v) },
+      { label: 'Expected', num: true, value: (r) => r.before, format: (v) => F.metric(v, metric, { short: true }) },
+      { label: 'Actual', num: true, value: (r) => r.after, format: (v) => F.metric(v, metric, { short: true }) },
+      { label: 'AI effect', num: true, value: (r) => r.pct, sortValue: (r) => r.score, format: (v) => F.pct(v) },
       { label: '95% CI', num: true, value: (r) => r.lo, format: (v, r) => (r.lo == null ? '—' : F.pct(r.lo, 0) + ' to ' + F.pct(r.hi, 0)) },
       { label: 'Status', value: (r) => r.status, cell: (r) => (r.lowSample ? el('span.chip', icon('warn'), 'Small sample') : statusChip(r)) });
-    return table(cols, rows, { sortCol: cols.findIndex((c) => c.label === 'Change'), sortDir: -1, rowClass: (r) => (r.lowSample ? 'muted' : '') });
+    return table(cols, rows, { sortCol: cols.findIndex((c) => c.label === 'AI effect'), sortDir: -1, rowClass: (r) => (r.lowSample ? 'muted' : '') });
   }
 
   // ---------------- Dimension × AI usage tier ----------------
   const CROSS_DIMS = [{ value: 'level', label: 'Job level' }, { value: 'org', label: 'Org' }];
-  const CROSS_MODES = [{ value: 'change', label: 'Change' }, { value: 'lift', label: 'Lift vs non-adopters' }];
+  const CROSS_MODES = [{ value: 'did', label: 'AI effect' }, { value: 'lift', label: 'Lift vs non-adopters' }];
   const fmtPts0 = (v) => (v == null ? '—' : (v > 0 ? '+' : '') + Math.round(v * 100) + ' pts');
 
+  // 'did'  = DiD effect per cell (adopters only; non-adopters are the comparison group).
+  // 'lift' = before/after change of each tier minus that of non-adopters in the same row.
   function crossSection(ctx, app, metric, meta, t) {
     const st = app.state.exec;
     const dim = st.crossBy, lift = st.crossMode === 'lift';
     const dimLabel = CROSS_DIMS.find((d) => d.value === dim).label;
-    const data = ctx.compareCross(metric, dim);
+    const data = ctx.compareCross(metric, dim, lift ? 'change' : 'did');
     const wrap = el('div.page');
     wrap.appendChild(el('div.section-head',
       el('h2', { text: 'Impact by ' + dimLabel.toLowerCase() + ' and AI usage' }),
       el('div', { style: { marginLeft: 'auto', display: 'flex', gap: '8px', flexWrap: 'wrap' } },
         seg('Rows', CROSS_DIMS, dim, (v) => app.update({ exec: { crossBy: v } })),
-        seg('Measure', CROSS_MODES, st.crossMode, (v) => app.update({ exec: { crossMode: v } })))));
-    if (!data.length) { wrap.appendChild(el('div.card', el('p.empty-note', { text: 'Not enough before/after data.' }))); return wrap; }
+        seg('Measure', CROSS_MODES, lift ? 'lift' : 'did', (v) => app.update({ exec: { crossMode: v } })))));
+    if (!data.length) { wrap.appendChild(el('div.card', el('p.empty-note', { text: 'Not enough data.' }))); return wrap; }
 
-    // Findings: heavy users vs non-adopters in each row.
     const ins = el('ul.insights');
-    const pairs = data.map((r) => ({ row: r.row, heavy: r.cells[3], none: r.cells[0] })).filter((x) => x.heavy.lift != null);
-    for (const x of pairs) {
-      const dir = x.heavy.lift >= 0 ? 'better' : 'worse';
-      ins.appendChild(el('li', el('span', el('strong', { text: x.row }), ': heavy users ' + F.pct(x.heavy.pct) + ' vs ' + F.pct(x.none.pct) + ' for non-adopters → ',
-        el('strong', { text: fmtPts0(Math.abs(x.heavy.lift)).replace('+', '') + ' ' + dir }),
-        x.heavy.liftSig ? ' (95% CI ' + fmtPts0(x.heavy.liftLo) + ' to ' + fmtPts0(x.heavy.liftHi) + ').' : ' (not statistically clear).')));
+    if (lift) {
+      // Heavy users vs non-adopters in each row.
+      const pairs = data.map((r) => ({ row: r.row, heavy: r.cells[3], none: r.cells[0] })).filter((x) => x.heavy.lift != null);
+      for (const x of pairs) {
+        const dir = x.heavy.lift >= 0 ? 'better' : 'worse';
+        ins.appendChild(el('li', el('span', el('strong', { text: x.row }), ': heavy users ' + F.pct(x.heavy.pct) + ' vs ' + F.pct(x.none.pct) + ' for non-adopters → ',
+          el('strong', { text: fmtPts0(Math.abs(x.heavy.lift)).replace('+', '') + ' ' + dir }),
+          x.heavy.liftSig ? ' (95% CI ' + fmtPts0(x.heavy.liftLo) + ' to ' + fmtPts0(x.heavy.liftHi) + ').' : ' (not statistically clear).')));
+      }
+      if (pairs.length >= 2) {
+        const sorted = pairs.slice().sort((a, b) => b.heavy.lift - a.heavy.lift);
+        ins.appendChild(el('li', el('span', 'The lift is largest for ', el('strong', { text: sorted[0].row }), ' and smallest for ', el('strong', { text: sorted[sorted.length - 1].row }), '.')));
+      }
+      if (!pairs.length) ins.appendChild(el('li', el('span', { text: 'Too few non-adopters (or heavy users) per ' + dimLabel.toLowerCase() + ' to measure lift. Use the AI effect view.' })));
+    } else {
+      // Heavy vs light users' effect in each row.
+      const rowsH = data.filter((r) => !r.cells[3].lowSample);
+      for (const r of rowsH) {
+        const hv = r.cells[3], lt = r.cells[1];
+        ins.appendChild(el('li', el('span', el('strong', { text: r.row }), ': heavy users ', el('strong', { text: F.pct(hv.pct) }),
+          hv.sig ? ' (95% CI ' + F.pct(hv.lo, 0) + ' to ' + F.pct(hv.hi, 0) + ')' : ' (not statistically clear)',
+          lt.lowSample ? '.' : ', light users ' + F.pct(lt.pct) + '.')));
+      }
+      if (rowsH.length >= 2) {
+        const sorted = rowsH.slice().sort((a, b) => b.cells[3].score - a.cells[3].score);
+        ins.appendChild(el('li', el('span', 'For heavy users, the AI effect is largest for ', el('strong', { text: sorted[0].row }), ' and smallest for ', el('strong', { text: sorted[sorted.length - 1].row }), '.')));
+      }
+      if (!rowsH.length) ins.appendChild(el('li', el('span', { text: 'Too few heavy users per ' + dimLabel.toLowerCase() + ' to measure the effect.' })));
     }
-    if (pairs.length >= 2) {
-      const sorted = pairs.slice().sort((a, b) => b.heavy.lift - a.heavy.lift);
-      ins.appendChild(el('li', el('span', 'The apparent AI effect is largest for ', el('strong', { text: sorted[0].row }), ' and smallest for ', el('strong', { text: sorted[sorted.length - 1].row }), '.')));
-    }
-    if (!pairs.length) ins.appendChild(el('li', el('span', { text: 'Too few non-adopters (or heavy users) per ' + dimLabel.toLowerCase() + ' to measure lift. Use the Change view.' })));
-    const hidden = data.reduce((s, r) => s + r.cells.filter((c) => c.lowSample && c.devCount > 0).length, 0);
-    if (hidden) ins.appendChild(el('li', el('span', { text: hidden + ' cell' + (hidden > 1 ? 's have' : ' has') + ' fewer than ' + AID.analysis.MIN_GROUP_DEVS + ' developers with before/after data and ' + (hidden > 1 ? 'are' : 'is') + ' hidden from the chart.' })));
+    const tierIdx = [1, 2, 3];
+    const hidden = data.reduce((s, r) => s + tierIdx.filter((ti) => r.cells[ti].lowSample && r.cells[ti].devCount > 0).length, 0);
+    if (hidden) ins.appendChild(el('li', el('span', { text: hidden + ' cell' + (hidden > 1 ? 's have' : ' has') + ' fewer than ' + AID.analysis.MIN_GROUP_DEVS + ' developers with enough data and ' + (hidden > 1 ? 'are' : 'is') + ' hidden from the chart.' })));
 
     // Grouped bars: one group per row value, one bar per usage tier.
-    const tierIdx = lift ? [1, 2, 3] : [0, 1, 2, 3];
     const cellOf = (si, i) => data[i].cells[tierIdx[si]];
     const series = tierIdx.map((ti) => ({
       name: ctx.TIERS[ti], color: t.tiers[ti],
@@ -367,10 +430,10 @@ window.AID = window.AID || {};
     }));
     const c = card({
       id: 'exec-cross', height: 340,
-      title: lift ? meta.short + ': improvement beyond non-adopters' : 'Change in ' + meta.short + ' by ' + dimLabel.toLowerCase() + ' and usage tier',
+      title: lift ? meta.short + ': improvement beyond non-adopters' : 'AI effect on ' + meta.short + ' by ' + dimLabel.toLowerCase() + ' and usage tier',
       sub: (lift
-        ? 'Each bar = the tier\'s improvement minus the improvement of non-adopters in the same ' + dimLabel.toLowerCase() + ', in percentage points. Positive = better.'
-        : 'Each bar = average per-developer change vs their own baseline.' + (meta.better === 'down' ? ' Lower is better for this metric, so a negative change is an improvement.' : '')) +
+        ? 'Each bar = the tier\'s before/after change minus the change of non-adopters in the same ' + dimLabel.toLowerCase() + ', in percentage points. Positive = better.'
+        : 'Each bar = actual vs expected without AI, for adopters in that tier. Non-adopters are the comparison group, so they have no bar.' + (meta.better === 'down' ? ' Lower is better for this metric, so a negative effect is an improvement.' : '')) +
         ' Whiskers = 95% confidence interval.',
     });
     queueMicrotask(() => AID.charts.grouped(c.canvas, {
@@ -379,18 +442,18 @@ window.AID = window.AID || {};
       valueFmt: lift ? fmtPts0 : (v) => F.pct(v),
       tooltipLines: (si, i) => {
         const x = cellOf(si, i);
-        const lines = [F.metric(x.before, metric) + ' → ' + F.metric(x.after, metric) + ' (' + F.pct(x.pct) + ')', x.n + ' developers'];
-        if (lift) lines.push('95% CI ' + fmtPts0(x.liftLo) + ' to ' + fmtPts0(x.liftHi));
-        else { lines.push(ciText(x)); if (x.lift != null) lines.push('vs non-adopters: ' + fmtPts0(x.lift)); }
-        return lines;
+        if (lift) return [F.metric(x.before, metric) + ' → ' + F.metric(x.after, metric) + ' (' + F.pct(x.pct) + ')', x.n + ' developers', '95% CI ' + fmtPts0(x.liftLo) + ' to ' + fmtPts0(x.liftHi)];
+        return [F.metric(x.after, metric) + ' actual vs ' + F.metric(x.before, metric) + ' expected', x.n + ' adopters', ciText(x)];
       },
     }));
     c.setTable(() => crossTable(ctx, data, dimLabel, lift));
 
     const side = el('section.card',
-      el('h3', { text: 'Heavy users vs non-adopters', style: { fontSize: '15px', marginBottom: '10px' } }), ins,
+      el('h3', { text: lift ? 'Heavy users vs non-adopters' : 'AI effect by usage tier', style: { fontSize: '15px', marginBottom: '10px' } }), ins,
       crossTable(ctx, data, dimLabel, lift),
-      el('p.card-foot', { text: (lift ? 'Non-adopter column = their % change. Other columns = lift over non-adopters, in percentage points. ' : 'Values = % change vs own baseline. ') + 'Bold = statistically clear (95% CI excludes zero). n = developers with 2+ months before and after.' }));
+      el('p.card-foot', { text: (lift
+        ? 'Non-adopter column = their % change. Other columns = lift over non-adopters, in percentage points. n = developers with 2+ months before and after. '
+        : 'Values = AI effect (actual vs expected without AI). n = adopters with 2+ months before and after adoption. ') + 'Bold = statistically clear (95% CI excludes zero).' }));
     wrap.appendChild(el('div.grid-3-2', c.el, side));
     return wrap;
   }
@@ -398,6 +461,7 @@ window.AID = window.AID || {};
   function crossTable(ctx, data, dimLabel, lift) {
     const cols = [{ label: dimLabel, value: (r) => r.row }];
     ctx.TIER_SHORT.forEach((name, ti) => {
+      if (!lift && ti === 0) return; // non-adopters are the DiD comparison group
       const useLift = lift && ti > 0;
       cols.push({
         label: name, num: true,

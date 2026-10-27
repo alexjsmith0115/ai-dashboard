@@ -11,7 +11,7 @@ window.AID = window.AID || {};
     showSettings: false,
     filters: { org: '', domain: '', team: '', level: '', icOnly: true, from: '', to: '' },
     settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, activeDays: 5, highDays: 12 },
-    exec: { metric: 'prsMerged', groupBy: 'org', crossBy: 'level', crossMode: 'change' },
+    exec: { metric: 'prsMerged', groupBy: 'org', crossBy: 'level', crossMode: 'did' },
     explore: {
       trendMetric: 'prsMerged', trendGroup: 'tier', trendX: 'calendar', trendAgg: 'mean',
       corrLevel: 'change', corrMethod: 'spearman', corrSet: 'usage',
@@ -164,7 +164,7 @@ window.AID = window.AID || {};
       el('p.help', { text: help }));
     box.append(
       el('div', select('Before / after split', [{ value: 'rollout', label: 'Company rollout month' }, { value: 'perdev', label: 'Each developer\'s adoption month' }], s.mode, (v) => setS({ mode: v })),
-        el('p.help', { text: s.mode === 'rollout' ? 'All developers split at one month.' : 'Each developer splits at their first month with ' + s.activeDays + '+ active days. Non-adopters split at the median adoption month.' })),
+        el('p.help', { text: (s.mode === 'rollout' ? 'All developers split at one month.' : 'Each developer splits at their first month with ' + s.activeDays + '+ active days. Non-adopters split at the median adoption month.') + ' Used on Explore and in the Lift view. The AI effect on the Executive summary always uses each developer\'s adoption month.' })),
       el('div', select('Rollout month', [{ value: '', label: 'Auto (' + AID.data.monthLabel(ctx ? ctx.autoRollout : dataset.months[0], true) + ')' }].concat(months), s.rollout, (v) => setS({ rollout: v })),
         el('p.help', { text: 'Auto = first month when 20%+ of developers were active. Used in rollout mode.' })),
       numField('Ramp-up months to skip', s.ramp, 0, 6, (n) => setS({ ramp: n }), 'Months right after the split that count as neither before nor after.'),

@@ -8,6 +8,7 @@ window.AID = window.AID || {};
   const NON_ADOPTER_DAYS = 1;    // average active days / month below this = non-adopter
   // Any of these > 0 in a month means the developer was working. The first such month is their start month.
   const WORK_KEYS = ['prsOpened', 'prsMerged', 'throughput', 'thoughputWithSubtasks', 'storyPoints', 'additions', 'activeDays'];
+  const MIN_CONTROL_DEVS = 10;   // DiD: a month needs this many untreated developer-months to estimate its month effect
   const OTHER = 'Other';
 
   // ---------- Basic stats ----------
@@ -174,6 +175,24 @@ window.AID = window.AID || {};
       return res;
     }
 
+    // Turns a mean difference (md), its standard error (se), and a baseline into the common result shape:
+    // % change, 95% CI, statistical status, and score (positive = better, whatever the metric's direction).
+    function finish(res, md, se, n, base) {
+      const meta = AID.M[res.key] || {};
+      const h = tCrit(n - 1) * se;
+      base = Math.abs(base);
+      Object.assign(res, { diff: md, pct: md / base, lo: (md - h) / base, hi: (md + h) / base, sePct: se / base });
+      // Usage that starts near zero (most Cursor metrics before rollout) makes % change meaningless.
+      res.fromZero = meta.source === 'Cursor' && base < 0.1 * Math.abs(res.after);
+      const sig = md - h > 0 || md + h < 0;
+      res.sig = sig;
+      const good = meta.better === 'down' ? md < 0 : md > 0;
+      res.good = good;
+      res.status = !sig ? 'flat' : meta.better === 'neutral' ? (md > 0 ? 'up' : 'down') : good ? 'improved' : 'worse';
+      res.score = meta.better === 'down' ? -res.pct : res.pct;
+      return res;
+    }
+
     // Paired before/after comparison across developers. Each developer is compared with their own baseline.
     function compare(key, devList) {
       const list = devList || devs;
@@ -183,22 +202,143 @@ window.AID = window.AID || {};
         if (p.nb >= MIN_MONTHS_PER_SIDE && p.na >= MIN_MONTHS_PER_SIDE) { bs.push(p.b); as.push(p.a); diffs.push(p.a - p.b); }
       }
       const n = diffs.length;
-      const meta = AID.M[key] || {};
       const res = { key, n, before: mean(bs), after: mean(as), status: 'nodata' };
       if (n < 2 || !res.before) return res;
-      const md = mean(diffs), se = sd(diffs) / Math.sqrt(n), h = tCrit(n - 1) * se;
-      const base = Math.abs(res.before);
-      Object.assign(res, { diff: md, pct: md / base, lo: (md - h) / base, hi: (md + h) / base, sePct: se / base });
-      // Usage that starts near zero (most Cursor metrics before rollout) makes % change meaningless.
-      res.fromZero = meta.source === 'Cursor' && base < 0.1 * Math.abs(res.after);
-      const sig = md - h > 0 || md + h < 0;
-      res.sig = sig;
-      const good = meta.better === 'down' ? md < 0 : md > 0;
-      res.good = good;
-      res.status = !sig ? 'flat' : meta.better === 'neutral' ? (md > 0 ? 'up' : 'down') : good ? 'improved' : 'worse';
-      // "goodness" score: positive = better, regardless of metric direction
-      res.score = meta.better === 'down' ? -res.pct : res.pct;
+      return finish(res, mean(diffs), sd(diffs) / Math.sqrt(n), n, res.before);
+    }
+
+    // ---------- Difference-in-differences (imputation estimator) ----------
+    // 1. Fit y = developer effect + calendar-month effect on untreated months only:
+    //    every month of non-adopters, and the months before adoption for adopters.
+    // 2. For each adopter month after adoption, expected = developer effect + month effect. Effect = actual − expected.
+    // 3. Average the effect per developer, then across developers. The CI comes from the spread across developers.
+    // Developer effects remove fixed differences (skill, level, team). Month effects remove company-wide changes
+    // (seasonality, re-orgs, process changes). Staggered adoption dates are handled because adopters are never
+    // used as the comparison for each other after they adopt.
+    // The model is fitted on every developer in the date range (ignoring org/domain/team/level filters), so that
+    // month effects stay stable when a filter selects a small group.
+    const didPool = ds.devs.filter((d) => d.rows.length && (!f.icOnly || d.isIC));
+    const didCache = new Map();
+    function didFit(key) {
+      if (didCache.has(key)) return didCache.get(key);
+      const devPos = new Map(), t0 = ds.months[0];
+      const T = ds.months[ds.months.length - 1] - t0 + 1;
+      const obs = [];
+      for (const d of didPool) {
+        const a = d.adoptIdx;
+        for (const r of rowsOf(d)) {
+          const y = r.v[key];
+          if (!isNum(y)) continue;
+          const k = a == null ? null : r.mi - a;
+          const treated = k != null && k >= 0;
+          if (treated && k < ramp) continue; // ramp-up months count as neither side
+          if (!devPos.has(d)) devPos.set(d, devPos.size);
+          obs.push({ d, i: devPos.get(d), t: r.mi - t0, y, k, treated });
+        }
+      }
+      const D = devPos.size;
+      const ctrl = obs.filter((o) => !o.treated);
+      const nI = new Float64Array(D), nT = new Float64Array(T);
+      for (const o of ctrl) { nI[o.i]++; nT[o.t]++; }
+      // Alternating projections: solve for both sets of effects on an unbalanced panel.
+      const alpha = new Float64Array(D), lambda = new Float64Array(T);
+      const sI = new Float64Array(D), sT = new Float64Array(T);
+      for (let it = 0; it < 500; it++) {
+        sI.fill(0);
+        for (const o of ctrl) sI[o.i] += o.y - lambda[o.t];
+        for (let i = 0; i < D; i++) alpha[i] = nI[i] ? sI[i] / nI[i] : 0;
+        sT.fill(0);
+        for (const o of ctrl) sT[o.t] += o.y - alpha[o.i];
+        let delta = 0;
+        for (let t = 0; t < T; t++) {
+          const v = nT[t] ? sT[t] / nT[t] : 0;
+          delta = Math.max(delta, Math.abs(v - lambda[t]));
+          lambda[t] = v;
+        }
+        if (delta < 1e-9) break;
+      }
+      // Usable observations: the developer has enough untreated months, and the month has enough comparison developers.
+      const byDev = new Map(), pre = new Map(), post = new Map();
+      let dropped = 0;
+      for (const o of obs) {
+        if (o.k == null) continue;
+        if (nI[o.i] < MIN_MONTHS_PER_SIDE) continue;
+        if (nT[o.t] < MIN_CONTROL_DEVS) { if (o.treated) dropped++; continue; }
+        const yhat = alpha[o.i] + lambda[o.t], e = o.y - yhat;
+        if (o.treated) {
+          let rec = byDev.get(o.d);
+          if (!rec) { rec = { tau: [], yhat: [], y: [] }; byDev.set(o.d, rec); }
+          rec.tau.push(e); rec.yhat.push(yhat); rec.y.push(o.y);
+        }
+        const bucket = o.treated ? post : pre;
+        if (!bucket.has(o.k)) bucket.set(o.k, []);
+        bucket.get(o.k).push({ d: o.d, e, yhat, y: o.y });
+      }
+      const devEffects = new Map();
+      for (const [d, rec] of byDev) {
+        if (rec.tau.length < MIN_MONTHS_PER_SIDE) continue;
+        devEffects.set(d, { tau: mean(rec.tau), yhat: mean(rec.yhat), y: mean(rec.y), months: rec.tau.length });
+      }
+      const minCtrl = Math.min(...[...nT].filter((n) => n > 0));
+      const res = { key, devEffects, pre, post, dropped, controlDevs: didPool.filter((d) => d.adoptIdx == null).length, minCtrl };
+      didCache.set(key, res);
       return res;
+    }
+
+    // The average AI effect for a set of developers. Same result shape as compare():
+    // before = expected value without AI, after = actual value, pct = effect as % of expected.
+    function did(key, devList) {
+      const fit = didFit(key);
+      const per = [];
+      for (const d of devList || devs) { const x = fit.devEffects.get(d); if (x) per.push(x); }
+      const n = per.length;
+      const res = { key, n, method: 'did', before: mean(per.map((x) => x.yhat)), after: mean(per.map((x) => x.y)), status: 'nodata' };
+      if (n < 2 || !res.before) return res;
+      const taus = per.map((x) => x.tau);
+      return finish(res, mean(taus), sd(taus) / Math.sqrt(n), n, res.before);
+    }
+
+    // Effect by month relative to adoption. Months before adoption show the leftover difference from the fitted
+    // path (should be near zero with no trend if adopters were not already improving). Months 0+ are the effect.
+    function eventStudy(key, devList, opts) {
+      const o = Object.assign({ from: -6, to: 12 }, opts);
+      const fit = didFit(key);
+      const inSet = new Set(devList || devs);
+      const out = [];
+      for (let k = o.from; k <= o.to; k++) {
+        const b = ((k < 0 ? fit.pre : fit.post).get(k) || []).filter((x) => inSet.has(x.d));
+        const n = b.length;
+        const row = { k, n, post: k >= 0 };
+        if (n >= MIN_CONTROL_DEVS) {
+          const es = b.map((x) => x.e), base = Math.abs(mean(b.map((x) => (k < 0 ? x.y : x.yhat))));
+          const m = mean(es), h = tCrit(n - 1) * sd(es) / Math.sqrt(n);
+          Object.assign(row, { pct: m / base, lo: (m - h) / base, hi: (m + h) / base });
+        }
+        out.push(row);
+      }
+      return out;
+    }
+
+    // DiD effect per group, in the same shape as compareByGroup().
+    function didByGroup(metric, groupKey) {
+      const byG = new Map();
+      for (const d of devs) {
+        const g = groupOf(d, groupKey);
+        if (!byG.has(g)) byG.set(g, []);
+        byG.get(g).push(d);
+      }
+      const out = [];
+      for (const [g, list] of byG) {
+        const c = did(metric, list);
+        const sample = list[0];
+        out.push(Object.assign(c, {
+          group: g, devCount: list.length, adoption: adoptionRate(list),
+          avgActiveDays: mean(list.map(usageAfter)), lowSample: c.n < MIN_GROUP_DEVS,
+          parent: groupKey === 'team' ? sample.domain : groupKey === 'domain' ? sample.org : '',
+          manager: groupKey === 'team' ? sample.manager : '',
+        }));
+      }
+      return out;
     }
 
     function groupValues(key, devList) {
@@ -237,13 +377,15 @@ window.AID = window.AID || {};
 
     // Rows of a dimension (e.g. job level) × usage tier. Each cell is a paired before/after comparison.
     // lift = cell's improvement minus the same row's non-adopters' improvement (positive = better), in % points.
-    function compareCross(metric, rowKey) {
+    // method 'did' uses the DiD effect in each cell instead of the before/after change (no lift: non-adopters are the comparison).
+    function compareCross(metric, rowKey, method) {
+      const measure = method === 'did' ? did : compare;
       const rowVals = [...new Set(devs.map((d) => groupOf(d, rowKey)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
       return rowVals.map((rv) => {
         const inRow = devs.filter((d) => groupOf(d, rowKey) === rv);
         const cells = TIERS.map((tier, ti) => {
           const list = inRow.filter((d) => tierIndex(d) === ti);
-          return Object.assign(compare(metric, list), { tier, tierShort: TIER_SHORT[ti], devCount: list.length });
+          return Object.assign(measure(metric, list), { tier, tierShort: TIER_SHORT[ti], devCount: list.length });
         });
         for (const c of cells) c.lowSample = c.n < MIN_GROUP_DEVS || c.pct == null;
         const base = cells[0];
@@ -382,7 +524,7 @@ window.AID = window.AID || {};
 
     return {
       ds, state, devs, months, onboarding, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
-      splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, compareCross, groupValues,
+      splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, did, didFit, didByGroup, eventStudy, compareCross, groupValues,
       adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,
       beforeWindow: windowOf('before'), afterWindow: windowOf('after'),
     };
@@ -390,5 +532,5 @@ window.AID = window.AID || {};
 
   function range(a, b) { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; }
 
-  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, NON_ADOPTER_DAYS, OTHER };
+  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, MIN_CONTROL_DEVS, NON_ADOPTER_DAYS, OTHER };
 })(window.AID);

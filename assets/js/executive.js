@@ -5,7 +5,7 @@ window.AID = window.AID || {};
   const { el, select, seg, statusChip, answerChip, table, card, icon, titleRow } = AID.ui;
   const F = AID.fmt;
 
-  const HEADLINE_OPTIONS = ['prsMerged', 'throughput', 'storyPoints', 'thoughputWithSubtasks', 'medianCycleDays', 'medianTimeToMergeHours', 'prsOpened'];
+  const HEADLINE_OPTIONS = ['prsMerged', 'throughput', 'storyPoints', 'medianCycleDays', 'medianTimeToMergeHours'];
   const GROUP_LEVELS = [{ value: 'org', label: 'Org' }, { value: 'domain', label: 'Domain' }, { value: 'team', label: 'Team' }, { value: 'level', label: 'Job level' }];
   const BAR_LIMIT = 20;
   let stickyObs = null;
@@ -24,7 +24,7 @@ window.AID = window.AID || {};
 
   function render(root, ctx, app) {
     const st = app.state.exec;
-    const metric = st.metric;
+    const metric = HEADLINE_OPTIONS.includes(st.metric) ? st.metric : HEADLINE_OPTIONS[0]; // a saved choice can be an option that was removed
     const meta = AID.M[metric];
     const t = AID.charts.theme();
     const page = el('div.page');

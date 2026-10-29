@@ -28,16 +28,20 @@ window.AID = window.AID || {};
       how: [
         'Cursor uses the plain columns (activeDays, totalRequests, …). Copilot uses the columns that start with copilot (copilotActiveDays, copilotTotalRequests, …).',
         'Cursor + Copilot adds the two tools together for requests, lines, tabs, and spend.',
-        'Cursor + Copilot active days = the higher of the two. The data has no daily detail, and a developer can use both tools on the same day.',
+        'Cursor + Copilot active days = the higher of the two. The data has no daily detail, and a developer can use both tools on the same day. Thus days are never counted twice, and the true number of days with either tool can be higher.',
         'Composer, Cmd+K, and Bugbot are Cursor features. The Copilot view does not show them. The combined view uses the Cursor values.',
         'Copilot has no rejects column. For the AI acceptance rate, Copilot rejects = copilotTotalApplies − copilotTotalAccepts.',
         'In the combined view, the primary model of a month is the model of the tool with more active days.',
         'The adoption month, the usage tiers, and the AI effect all use the active days of the selected tool. Jira and GitHub metrics do not change.',
+        'Cursor view: a developer who uses only Copilot is a non-adopter. The same is true for Cursor users in the Copilot view. Cursor + Copilot view: a developer adopts in the first month with {thr}+ days in either tool.',
+        'In the Cursor or Copilot view, the AI effect leaves out every month with {thr}+ active days in the other tool. Before adoption, such a month is not a month without AI. After adoption, it mixes the two tools. Thus the effect compares the selected tool alone with no AI.',
+        'The start month of a developer (for new-hire onboarding) uses both tools in every view, so the same months are left out in each view.',
       ],
       read: ['Compare the AI effect in the three views. A clear effect for one tool and none for the other means the two tools do not change output in the same way.'],
       watch: [
         'A developer who used the tool from the first month of the data has no months before adoption. That developer cannot add to the AI effect. This is common for Copilot, and for the combined view when Copilot came before Cursor.',
         'Developers who moved from Copilot to Cursor show a drop in Copilot use. That drop is a change of tool, not less AI use. Use the combined view to see total AI use.',
+        'In the Cursor view, the AI effect of a developer who used Copilot before Cursor compares Cursor with their months without any AI. If all their months before Cursor had Copilot, they have no baseline and are left out.',
       ],
       see: ['m-adoption', 'm-tiers'],
     },
@@ -86,7 +90,7 @@ window.AID = window.AID || {};
       id: 'm-did', title: 'AI effect (difference-in-differences)',
       short: 'The AI effect is the difference between what adopters actually produced and what they would have produced without AI.',
       how: [
-        'Step 1. The dashboard fits a model on every month without AI. The model has a developer effect (each developer\'s normal level) and a month effect (the company-wide change in that calendar month, for example a December dip).',
+        'Step 1. The dashboard fits a model on every month without AI. In the Cursor or Copilot view, months with {thr}+ days in the other tool are left out of all steps. The model has a developer effect (each developer\'s normal level) and a month effect (the company-wide change in that calendar month, for example a December dip).',
         'Step 2. For each adopter month after adoption: expected = developer effect + month effect. This is the value without AI.',
         'Step 3. AI effect for that month = actual − expected.',
         'Step 4. The dashboard averages the effect for each adopter, then across adopters. The % is the average effect divided by the average expected value.',
@@ -110,6 +114,7 @@ window.AID = window.AID || {};
       short: 'The comparison group sets the company-wide change in each month. The verdict shows the effect with three different groups, to check that the choice does not drive the result.',
       how: [
         'All developers without AI yet (default): non-adopters, and adopters in the months before they adopt.',
+        'In the Cursor or Copilot view, months with {thr}+ active days in the other tool are left out of every comparison group, and of the adopter months too.',
         'Adopters before adoption only: non-adopters are not used. In late months, almost everyone has adopted, so those months have too few comparison developers and are left out.',
         'Non-adopters only: only non-adopters set the month effects. Each adopter\'s own level still comes from their months before adoption.',
         'You choose the group in Settings (AI effect comparison group). The check in the verdict always shows all three.',
@@ -277,6 +282,7 @@ window.AID = window.AID || {};
       short: 'The share of developers who used {toolAny} at least {thr} days (active) and at least {hi} days (heavy) in each month.',
       how: [
         'For each month: developers with {thr}+ {tool} active days ÷ all developers with data that month. The same for {hi}+ days.',
+        'Cursor + Copilot: the solid lines count a developer with {thr}+ days in either tool. The dashed lines show each tool on its own. One developer can be in both dashed lines, so they can add up to more than the solid line.',
         'New hires\' onboarding months are left out.',
         'The vertical line is the company rollout month.',
       ],

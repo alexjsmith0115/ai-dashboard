@@ -6,8 +6,9 @@ window.AID = window.AID || {};
   const MIN_MONTHS_PER_SIDE = 2; // a developer needs this many months before AND after to count
   const MIN_GROUP_DEVS = 5;      // default for settings.minGroup: groups smaller than this are flagged as low sample
   const NON_ADOPTER_DAYS = 1;    // average active days / month below this = non-adopter
-  // Any of these > 0 in a month means the developer was working. The first such month is their start month.
-  const WORK_KEYS = ['prsOpened', 'prsMerged', 'throughput', 'thoughputWithSubtasks', 'storyPoints', 'additions', 'activeDays'];
+  // Any of these raw columns > 0 in a month means the developer was working. The first such month is their start month.
+  // Both AI tools count in every view, so the start month (and the onboarding months left out) is the same for each AI tool view.
+  const WORK_KEYS = ['prsOpened', 'prsMerged', 'throughput', 'thoughputWithSubtasks', 'storyPoints', 'additions', 'activeDays', 'copilotActiveDays'];
   const MIN_CONTROL_DEVS = 10;   // DiD: a month needs this many untreated developer-months to estimate its month effect
   const OTHER = 'Other';
 
@@ -80,10 +81,16 @@ window.AID = window.AID || {};
     // Their first `onboard` months are onboarding: those rows are left out of every calculation.
     const firstMonth = ds.months[0];
     for (const d of ds.devs) {
-      const r0 = d.rows.find((r) => WORK_KEYS.some((k) => r.v[k] > 0));
+      const r0 = d.rows.find((r) => WORK_KEYS.some((k) => r.raw[k] > 0));
       d.startIdx = r0 ? r0.mi : null;
       d.isNewHire = d.startIdx != null && d.startIdx > firstMonth;
     }
+    // In a one-tool view, a developer who uses the other AI tool is still a non-adopter (adoption, tiers). But a month with
+    // the active threshold of days in the other tool is left out of the AI effect: before adoption it is not a month without AI,
+    // and after adoption it mixes the two tools. Thus the effect compares the selected tool alone with no AI.
+    const otherKey = ds.tool === 'cursor' ? AID.copilotKey('activeDays') : ds.tool === 'copilot' ? 'activeDays' : null;
+    const otherTool = otherKey ? (ds.tool === 'cursor' ? 'Copilot' : 'Cursor') : null;
+    const usesOther = (r) => !!otherKey && r.raw[otherKey] >= thr;
     const isOnboarding = (r) => r.dev.startIdx == null || r.mi < r.dev.startIdx || (r.dev.isNewHire && r.mi - r.dev.startIdx < onboard);
 
     // Per-developer adoption month: first month at or above the active-days threshold (unfiltered data).
@@ -242,11 +249,11 @@ window.AID = window.AID || {};
           const treated = k != null && k >= 0;
           if (treated && k < ramp) continue; // ramp-up months count as neither side
           if (!devPos.has(d)) devPos.set(d, devPos.size);
-          obs.push({ d, i: devPos.get(d), t: r.mi - t0, y, k, treated });
+          obs.push({ d, i: devPos.get(d), t: r.mi - t0, y, k, treated, other: usesOther(r) });
         }
       }
       const D = devPos.size;
-      const inPool = (o) => !o.treated && (ctl === 'all' || (ctl === 'notyet' ? o.k != null : o.k == null));
+      const inPool = (o) => !o.treated && !o.other && (ctl === 'all' || (ctl === 'notyet' ? o.k != null : o.k == null));
       const ctrl = obs.filter(inPool);
       const nI = new Float64Array(D), nT = new Float64Array(T);
       for (const o of ctrl) { nI[o.i]++; nT[o.t]++; }
@@ -270,14 +277,14 @@ window.AID = window.AID || {};
       // 'never': adopters are not in the fit, so their own level = average of (actual − month effect) before adoption.
       if (ctl === 'never') {
         const sA = new Float64Array(D), nA = new Float64Array(D);
-        for (const o of obs) if (!o.treated && o.k != null && nT[o.t]) { sA[o.i] += o.y - lambda[o.t]; nA[o.i]++; }
+        for (const o of obs) if (!o.treated && !o.other && o.k != null && nT[o.t]) { sA[o.i] += o.y - lambda[o.t]; nA[o.i]++; }
         for (let i = 0; i < D; i++) if (nA[i]) { alpha[i] = sA[i] / nA[i]; nI[i] = nA[i]; }
       }
       // Usable observations: the developer has enough untreated months, and the month has enough comparison developers.
       const byDev = new Map(), pre = new Map(), post = new Map();
       let dropped = 0;
       for (const o of obs) {
-        if (o.k == null) continue;
+        if (o.k == null || o.other) continue;
         if (nI[o.i] < MIN_MONTHS_PER_SIDE) continue;
         if (nT[o.t] < MIN_CONTROL_DEVS) { if (o.treated) dropped++; continue; }
         const yhat = alpha[o.i] + lambda[o.t], e = o.y - yhat;
@@ -296,9 +303,11 @@ window.AID = window.AID || {};
         devEffects.set(d, { tau: mean(rec.tau), yhat: mean(rec.yhat), y: mean(rec.y), months: rec.tau.length });
       }
       const minCtrl = Math.min(...[...nT].filter((n) => n > 0));
+      // Developers with at least one month in the comparison group.
+      const ctrlDevs = (adopter) => new Set(ctrl.filter((o) => (o.k != null) === adopter).map((o) => o.d)).size;
       const res = {
         key, control: ctl, devEffects, pre, post, dropped, minCtrl,
-        nonAdopters: didPool.filter((d) => d.adoptIdx == null).length, notYet: didPool.filter((d) => d.adoptIdx != null).length,
+        nonAdopters: ctrlDevs(false), notYet: ctrlDevs(true), otherMonths: obs.filter((o) => o.other).length,
       };
       didCache.set(ck, res);
       return res;
@@ -453,8 +462,10 @@ window.AID = window.AID || {};
       return { xs, labels: xs.map((x) => (o.xMode === 'relative' ? (x > 0 ? '+' + x : String(x)) : AID.data.monthLabel(x))), series: out, folded: fold ? fold.size : 0 };
     }
 
+    // Share of developers per month at the active / heavy thresholds. In the Both view, also each tool on its own.
     function adoptionSeries() {
-      const rows = months.map(() => ({ n: 0, any: 0, act: 0, high: 0 }));
+      const rows = months.map(() => ({ n: 0, any: 0, act: 0, high: 0, cur: 0, cp: 0 }));
+      const cpKey = AID.copilotKey('activeDays');
       const pos = new Map(months.map((m, i) => [m, i]));
       for (const d of devs) for (const r of rowsOf(d)) {
         const c = rows[pos.get(r.mi)];
@@ -464,12 +475,16 @@ window.AID = window.AID || {};
         if (a >= 1) c.any++;
         if (a >= thr) c.act++;
         if (a >= hi) c.high++;
+        if (r.raw.activeDays >= thr) c.cur++;
+        if (r.raw[cpKey] >= thr) c.cp++;
       }
       return {
         xs: months, labels: months.map((m) => AID.data.monthLabel(m)),
         any: rows.map((c) => (c.n ? c.any / c.n : null)),
         active: rows.map((c) => (c.n ? c.act / c.n : null)),
         high: rows.map((c) => (c.n ? c.high / c.n : null)),
+        cursor: rows.map((c) => (c.n ? c.cur / c.n : null)),
+        copilot: rows.map((c) => (c.n ? c.cp / c.n : null)),
         n: rows.map((c) => c.n),
       };
     }
@@ -542,7 +557,7 @@ window.AID = window.AID || {};
     const windowOf = (p) => { const m = allRowsInRange.filter((r) => phaseOf(r) === p).map((r) => r.mi); return m.length ? [Math.min(...m), Math.max(...m)] : null; };
 
     return {
-      ds, state, devs, months, onboarding, minGroup, control, CONTROLS, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
+      ds, state, devs, months, onboarding, minGroup, control, CONTROLS, otherTool, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
       splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, did, didFit, didByGroup, eventStudy, compareCross, groupValues,
       adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,
       beforeWindow: windowOf('before'), afterWindow: windowOf('after'),

@@ -117,7 +117,8 @@ window.AID = window.AID || {};
         head.n + ' adopters have ' + AID.analysis.MIN_MONTHS_PER_SIDE + '+ months on both sides.' +
         (ctx.ramp ? ' ' + ctx.ramp + ' ramp-up month(s) after adoption excluded.' : '') +
         (ctx.onboarding.months && ctx.onboarding.newHires ? ' The first ' + ctx.onboarding.months + ' month(s) of ' + ctx.onboarding.newHires + ' new hires are excluded as onboarding.' : '') +
-        (fit.dropped ? ' ' + fit.dropped + ' adopter-months are left out because their month has fewer than ' + AID.analysis.MIN_CONTROL_DEVS + ' comparison developers.' : ''),
+        (fit.dropped ? ' ' + fit.dropped + ' adopter-months are left out because their month has fewer than ' + AID.analysis.MIN_CONTROL_DEVS + ' comparison developers.' : '') +
+        (fit.otherMonths ? ' ' + fit.otherMonths + ' developer-months with ' + ctx.thr + '+ ' + ctx.otherTool + ' active days are left out, so the effect compares ' + AID.tool.label + ' alone with no AI.' : ''),
     }));
 
     // Right side: change by AI usage tier
@@ -126,7 +127,7 @@ window.AID = window.AID || {};
     const rows = tiers.map((x, i) => {
       if (i === 0) {
         return el('div.score-row', { style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
-          el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.devCount + ' developers · ' + (ctx.control === 'notyet' ? 'not used' : ctx.control === 'never' ? 'the comparison group' : 'part of the comparison group') })),
+          el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.devCount + ' developers · ' + (ctx.control === 'notyet' ? 'not used' : (ctx.control === 'never' ? 'the comparison group' : 'part of the comparison group') + (ctx.otherTool ? ' (months without ' + ctx.otherTool + ')' : '')) })),
           el('div.val', { text: '—', style: { color: 'var(--muted)' } }));
       }
       const w = x.score != null ? (Math.abs(x.score) / maxAbs) * 100 : 0;
@@ -294,15 +295,18 @@ window.AID = window.AID || {};
     const a = ctx.adoptionSeries();
     const c = card({ id: 'exec-adoption', help: 'c-adoption', title: 'AI adoption over time', sub: 'Share of developers using ' + AID.tool.any + ' in each month.', height: 260 });
     const markerIdx = ctx.perDev ? -1 : ctx.months.indexOf(ctx.rolloutIdx);
+    const both = AID.tool.key === 'both';
     const series = [
-      { name: 'Active (' + ctx.thr + '+ days)', values: a.active, color: t.series[0] },
+      { name: (both ? 'Either tool' : 'Active') + ' (' + ctx.thr + '+ days)', values: a.active, color: t.series[0] },
       { name: 'Heavy (' + ctx.hi + '+ days)', values: a.high, color: t.series[1] },
     ];
+    // Both view: each tool on its own (dashed), so a move from one tool to the other is visible.
+    if (both) series.push({ name: 'Cursor (' + ctx.thr + '+)', values: a.cursor, color: t.series[2], dash: [5, 4] }, { name: 'Copilot (' + ctx.thr + '+)', values: a.copilot, color: t.series[3], dash: [5, 4] });
+    if (both) c.box.before(el('p.chart-summary', { text: 'Either tool = ' + ctx.thr + '+ days with Cursor or with Copilot. Days are not added across tools, because one day can have both.' }));
     queueMicrotask(() => AID.charts.line(c.canvas, { labels: a.labels, series, pctAxis: true, marker: markerIdx >= 0 ? { index: markerIdx, label: 'AI rollout' } : null, endLabels: true }));
+    const pctCol = (s) => ({ label: s.name, num: true, value: (r) => s.values[r.i], format: (v) => (v == null ? '—' : Math.round(v * 100) + '%') });
     c.setTable(() => table(
-      [{ label: 'Month', value: (r) => r.i, format: (v) => a.labels[v], sortValue: (r) => r.i }, { label: 'Developers', num: true, value: (r) => a.n[r.i] },
-        { label: series[0].name, num: true, value: (r) => a.active[r.i], format: (v) => (v == null ? '—' : Math.round(v * 100) + '%') },
-        { label: series[1].name, num: true, value: (r) => a.high[r.i], format: (v) => (v == null ? '—' : Math.round(v * 100) + '%') }],
+      [{ label: 'Month', value: (r) => r.i, format: (v) => a.labels[v], sortValue: (r) => r.i }, { label: 'Developers', num: true, value: (r) => a.n[r.i] }].concat(series.map(pctCol)),
       a.xs.map((_, i) => ({ i })), { sortCol: 0, sortDir: 1 }));
     return c.el;
   }

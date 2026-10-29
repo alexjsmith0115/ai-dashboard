@@ -5,6 +5,7 @@ window.AID = window.AID || {};
 
   const DEV_HINTS = ['squadid', 'orgname', 'department', 'joblevel', 'githublogin'];
   const METRIC_HINTS = ['activedays', 'prsmerged', 'storypoints', 'totalrequests', 'throughput'];
+  const TEAM_HINTS = ['bugsdiscovered', 'escapedbugs'];
   // Metric-file key column -> developers.csv column it joins to (all compared case-insensitively).
   const KEY_CANDIDATES = [
     ['devid', 'devId'], ['dev_id', 'devId'], ['developerid', 'devId'], ['developer_id', 'devId'],
@@ -27,6 +28,7 @@ window.AID = window.AID || {};
 
   function classify(fields) {
     const lower = fields.map((f) => f.toLowerCase());
+    if (lower.includes('squadid') && TEAM_HINTS.some((h) => lower.includes(h))) return 'teams';
     const devScore = DEV_HINTS.filter((h) => lower.includes(h)).length;
     const metScore = METRIC_HINTS.filter((h) => lower.includes(h)).length;
     if (devScore === 0 && metScore === 0) return null;
@@ -166,6 +168,7 @@ window.AID = window.AID || {};
     v.aiAcceptRate = ar > 0 ? (100 * (v.totalAccepts || 0)) / ar : null;
     v.aiLineShare = v.additions > 0 && v.acceptedLinesAdded != null ? Math.min(100, (100 * v.acceptedLinesAdded) / v.additions) : null;
     v.costPerMergedPr = v.prsMerged > 0 && v.spendDollars != null ? v.spendDollars / v.prsMerged : null;
+    v.churnRatePct = v.additions > 0 && v.churnedLines != null ? Math.min(100, (100 * v.churnedLines) / v.additions) : null;
   }
 
   function buildDataset(devParsed, metParsed) {
@@ -206,8 +209,10 @@ window.AID = window.AID || {};
     const metaOf = new Map(AID.COPILOT_KEYS.map((k, i) => [copilotCols[i], AID.M[k]]));
     const tools = { cursor: present.has('activeDays'), copilot: present.has(AID.copilotKey('activeDays')), combined: present.has('combinedActiveDays') };
     if (tools.cursor && tools.copilot && !tools.combined) warnings.push('No combinedActiveDays column. The Cursor + Copilot view uses the higher of Cursor and Copilot active days, which can be too low when the tools are used on different days.');
-    const missing = AID.METRICS.filter((m) => !m.derived && !present.has(m.key) && (tools.cursor || !m.usage)).map((m) => m.key);
+    const missing = AID.METRICS.filter((m) => !m.derived && !m.optional && !present.has(m.key) && (tools.cursor || !m.usage)).map((m) => m.key);
     if (missing.length) warnings.push('Missing metric columns (shown as empty): ' + missing.join(', ') + '.');
+    const optMissing = AID.METRICS.filter((m) => m.optional && !present.has(m.key)).map((m) => m.key);
+    if (optMissing.length) warnings.push('Optional columns not in the file: ' + optMissing.join(', ') + '. The Executive summary tiles for them say which column to add.');
     const modelField = findField(metParsed.fields, 'primarymodel');
     const copilotModelField = findField(metParsed.fields, 'copilotprimarymodel');
 
@@ -259,6 +264,41 @@ window.AID = window.AID || {};
     return ds;
   }
 
+  // team_monthly_metrics.csv: one row per team (squadId) per month, with bugsDiscovered and/or escapedBugs.
+  // squadId matches developers.csv, ignoring case. A blank cell or a missing team-month counts as missing, not 0.
+  // Sets ds.teams = { rows: Map(team -> Map(month index -> { bugsDiscovered, escapedBugs })), cols: { bugsDiscovered, escapedBugs } }.
+  function attachTeams(ds, parsed) {
+    const teamField = findField(parsed.fields, 'squadid');
+    if (!teamField) throw new Error('The team file needs a squadId column.');
+    let monthField = null;
+    for (const cand of MONTH_CANDIDATES) {
+      const f = findField(parsed.fields, cand);
+      if (f) { monthField = f; break; }
+    }
+    if (!monthField) throw new Error('The team file needs a month column (month, period, yearMonth, monthStart, or date).');
+    const cols = { bugsDiscovered: findField(parsed.fields, 'bugsdiscovered'), escapedBugs: findField(parsed.fields, 'escapedbugs') };
+    const teamOf = new Map(ds.devs.map((d) => [d.team.toLowerCase(), d.team]));
+    const rows = new Map();
+    const unmatched = new Set();
+    let badMonth = 0, dup = 0;
+    for (const r of parsed.rows) {
+      const team = teamOf.get(String(r[teamField] || '').trim().toLowerCase());
+      if (!team) { if (r[teamField]) unmatched.add(r[teamField]); continue; }
+      const month = normalizeMonth(r[monthField]);
+      if (!month) { badMonth++; continue; }
+      const mi = monthIndex(month);
+      if (!rows.has(team)) rows.set(team, new Map());
+      const byMonth = rows.get(team);
+      if (byMonth.has(mi)) { dup++; continue; }
+      byMonth.set(mi, { bugsDiscovered: cols.bugsDiscovered ? num(r[cols.bugsDiscovered]) : null, escapedBugs: cols.escapedBugs ? num(r[cols.escapedBugs]) : null });
+    }
+    if (!rows.size) throw new Error('No team rows matched a squadId in developers.csv.');
+    if (unmatched.size) ds.warnings.push(unmatched.size + ' team file squadId values did not match any team in developers.csv and were skipped.');
+    if (badMonth) ds.warnings.push(badMonth + ' team file rows had an unreadable ' + monthField + ' value and were skipped.');
+    if (dup) ds.warnings.push(dup + ' duplicate team-month rows in the team file were skipped (first row kept).');
+    ds.teams = { rows, cols: { bugsDiscovered: !!cols.bugsDiscovered, escapedBugs: !!cols.escapedBugs } };
+  }
+
   function readFile(file) {
     return new Promise((resolve, reject) => {
       const fr = new FileReader();
@@ -272,5 +312,5 @@ window.AID = window.AID || {};
     return Papa.unparse({ fields, data: rows.map((r) => fields.map((f) => r[f])) });
   }
 
-  AID.data = { parseCsv, classify, buildDataset, applyTool, readFile, normalizeMonth, monthIndex, monthKey, monthLabel, toCsv };
+  AID.data = { parseCsv, classify, buildDataset, attachTeams, applyTool, readFile, normalizeMonth, monthIndex, monthKey, monthLabel, toCsv };
 })(window.AID);

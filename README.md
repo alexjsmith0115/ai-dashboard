@@ -6,12 +6,12 @@ No backend and no hosting. Open `index.html` in a browser.
 ## Use it
 
 1. Open `index.html` in Chrome, Edge, Safari, or Firefox.
-2. Drop `developers.csv` and `developer_monthly_metrics.csv` on the page, or click **Choose CSV files**.
+2. Drop `developers.csv` and `developer_monthly_metrics.csv` on the page, or click **Choose CSV files**. You can also add the optional `team_monthly_metrics.csv`, with the other files or later.
 3. Pick the AI tool in the filter bar: **Cursor**, **Copilot**, or **Both**. Every AI usage metric, the adoption month, the usage tiers, and the AI effect follow this choice.
 4. Use the **Executive summary** and **Explore** tabs. The **Guide** tab explains how each number is calculated and how to read it.
 
 To preview without real data, click **Explore with demo data** (or open `index.html?demo`).
-The demo has about 500 synthetic developers in 3 orgs. **Download demo CSVs** gives you files in the exact expected format.
+The demo has about 500 synthetic developers in 3 orgs. **Download demo CSVs** gives you all three files in the exact expected format.
 
 ### Data privacy
 
@@ -39,9 +39,30 @@ The demo has about 500 synthetic developers in 3 orgs. **Download demo CSVs** gi
 
 All other columns are the Cursor, Copilot, Jira, and GitHub metrics from the schema. The Copilot columns start with `copilot` (`copilotActiveDays`, `copilotTotalRequests`, …) and are optional. Without them, the **Copilot** and **Both** buttons are disabled. Column order does not matter. Spaces around headers are trimmed. The dashboard ignores extra columns, and a missing metric column shows as empty.
 
+Optional GitHub columns. The Executive summary uses them to show whether extra output is real, and what it costs reviewers. Without them, their tiles say which column to add.
+
+| Column | Definition |
+|---|---|
+| `medianPrSizeLines` | The median of (additions + deletions) for the developer's PRs merged in the month |
+| `churnedLines` | The lines the developer added in the month that were deleted or rewritten within 21 days. The dashboard calculates churn rate = `churnedLines` ÷ `additions`. |
+| `prsReviewed` | Other developers' PRs that the developer reviewed (approved, requested changes, or commented on) |
+| `reviewCommentsGiven` | Review comments the developer wrote on other developers' PRs |
+| `medianTimeToFirstReviewHours` | For the developer's own PRs: the median hours from PR opened to the first review |
+
 Blank cells:
 - A blank Cursor or Copilot usage cell counts as 0, because no usage means zero.
 - A blank Jira or GitHub cell counts as missing, not as 0.
+
+**team_monthly_metrics.csv** (optional): one row per team per month. The dashboard finds this file by its columns.
+
+| Column | Definition |
+|---|---|
+| `squadId` | The team. It matches `squadId` in `developers.csv`. The match ignores case. |
+| A month column | The month the bugs were found. The same names and formats as the metrics file. |
+| `bugsDiscovered` | The bugs found in the team's code in the month |
+| `escapedBugs` | The bugs from `bugsDiscovered` that were found in production |
+
+A blank cell or a missing team-month counts as missing, not as 0. Write 0 for a month with no bugs.
 
 ## How the analysis works
 
@@ -76,6 +97,11 @@ The verdict shows the headline effect with all three groups. If the results are 
 
 **Paired comparison.** Each developer is compared with their own baseline: the after-period average minus the before-period average. Then the dashboard averages these per-developer changes. A developer needs 2+ months on each side. Thus new hires and leavers do not change the result. "Improved" or "Worse" shows only when the 95% confidence interval excludes zero.
 
+**Team-level effect.** Bugs exist only per team, and review work moves between developers in a team. Thus the dashboard also fits a model on team-months: value = team effect + month effect + b × adoption share. Adoption share = the team's developers with the active-days threshold ÷ its developers. b = the change from 0% to 100% team adoption. The 95% CI treats each team as one unit, and the effect needs 8+ teams.
+- *PRs merged per developer (team level)*: the team's PRs ÷ its developers, with the adoption share of the same month. If this effect is smaller than the developer effect on PRs merged, part of the developer gain came from other people in the team.
+- *Bugs found per 100 PRs* and *Production bugs per 100 PRs*: 100 × bugs ÷ PRs merged, over 3 months. The adoption share is the average of the 3 months that end one month earlier, because bugs are found after the code is merged. The newest 2 months of the data are left out: bugs from their PRs are not found yet.
+- The model uses every team in the selected org and domain. The team and job level filters do not apply.
+
 **AI usage tiers.** Each developer's tier comes from their average active days per month (selected AI tool) in the after period: Non-adopter (< 1), Light (1–4), Medium (5–11), Heavy (12+). You can change the Medium and Heavy thresholds in Settings. The main evidence that AI causes a change is a comparison of tiers over the same months. If heavy users improved more than non-adopters, seasonality and org-wide changes cannot explain the gap.
 
 **Lift.** Lift = a tier's improvement minus the improvement of non-adopters in the same group (for example, heavy-user SDE2s vs non-adopter SDE2s), in percentage points. Positive = better. The 95% CI uses the standard errors of both cells. Cells with fewer developers than the *Minimum developers per group* setting (default 5) are hidden.
@@ -86,7 +112,12 @@ The verdict shows the headline effect with all three groups. If the results are 
 
 **Executive summary**
 - A verdict (Yes / Partly / Not yet / No) with the headline AI effect, its 95% CI, and the effect by usage tier.
-- KPI tiles: adoption, spend, PRs merged, Jira throughput, story points, cycle time, time to merge, and reopen rate (the quality guardrail). Each tile shows the change as the large number: green = improved, red = worse. Productivity tiles show the AI effect, with the actual and expected values below it.
+- KPI tiles in five groups. Each tile shows the change as the large number: green = improved, red = worse. Developer tiles show the AI effect, with the actual and expected values below it. Team tiles show the team-level effect.
+  - *Output and speed*: PRs merged, Jira throughput, cycle time, and PRs merged per developer (team level). Story points are not on the Executive summary: each team sets its own point values, and teams can inflate them. They are still on the Explore tab.
+  - *Is the extra output real?*: median PR size and churn rate.
+  - *Review load*: PRs reviewed, time to first review, and time to merge.
+  - *Quality*: reopen rate, bugs per 100 PRs, and production bugs per 100 PRs.
+  - *AI use and cost*: adoption and spend.
 - The AI effect by month since adoption (event study).
 - Adoption over time, and the headline metric by usage tier over time.
 - **Which groups are most impacted?** for Org, Domain, Team, or Job level. This section has key findings, a ranked change chart (top/bottom 10 when there are many teams), adoption vs impact, and a full table.

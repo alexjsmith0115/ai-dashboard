@@ -25,6 +25,8 @@ window.AID = window.AID || {};
   let dataset = null;
   let sourceName = '';
   let pending = { developers: null, metrics: null, devName: '', metName: '' };
+  // The optional team file from the user's files. It stays loaded when the other two files are loaded again.
+  let teamFile = null;
   let messages = { error: null, warnings: [] };
 
   // ---------- Persistence (settings only, never data) ----------
@@ -56,23 +58,34 @@ window.AID = window.AID || {};
   // ---------- Data loading ----------
   async function handleFiles(files) {
     messages.error = null;
+    let newTeams = false;
     for (const f of files) {
       try {
         const parsed = AID.data.parseCsv(await AID.data.readFile(f));
         const kind = AID.data.classify(parsed.fields);
-        if (!kind) { messages.error = '"' + f.name + '" does not look like developers.csv or the monthly metrics file.'; continue; }
+        if (!kind) { messages.error = '"' + f.name + '" does not look like developers.csv, the monthly metrics file, or the team file.'; continue; }
+        if (kind === 'teams') { teamFile = { parsed, name: f.name }; newTeams = true; continue; }
         pending[kind] = parsed;
         if (kind === 'developers') pending.devName = f.name; else pending.metName = f.name;
       } catch (e) { messages.error = 'Could not read "' + f.name + '": ' + e.message; }
     }
     if (pending.developers && pending.metrics) {
-      ingest(pending.developers, pending.metrics, pending.devName + ' + ' + pending.metName);
-    } else render();
+      ingest(pending.developers, pending.metrics, pending.devName + ' + ' + pending.metName, teamFile);
+    } else {
+      // A team file alone is added to the data already loaded.
+      if (newTeams && dataset) { addTeams(dataset, teamFile); messages.warnings = dataset.warnings; }
+      render();
+    }
   }
 
-  function ingest(devParsed, metParsed, name) {
+  function addTeams(ds, team) {
+    try { AID.data.attachTeams(ds, team.parsed); } catch (e) { ds.teams = null; ds.warnings.push(team.name + ': ' + e.message); }
+  }
+
+  function ingest(devParsed, metParsed, name, team) {
     try {
       dataset = AID.data.buildDataset(devParsed, metParsed);
+      if (team) addTeams(dataset, team);
       sourceName = name;
       messages = { error: null, warnings: dataset.warnings };
       pending = { developers: null, metrics: null, devName: '', metName: '' };
@@ -86,13 +99,14 @@ window.AID = window.AID || {};
 
   function loadDemo() {
     const d = AID.demo.generate();
-    ingest(d.dev, d.met, 'Demo data (synthetic)');
+    ingest(d.dev, d.met, 'Demo data (synthetic)', { parsed: d.team, name: 'Demo team file' });
   }
 
   function downloadDemo() {
     const d = AID.demo.generate();
     AID.ui.download('developers.csv', AID.data.toCsv(d.dev.fields, d.dev.rows));
     setTimeout(() => AID.ui.download('developer_monthly_metrics.csv', AID.data.toCsv(d.met.fields, d.met.rows)), 400);
+    setTimeout(() => AID.ui.download('team_monthly_metrics.csv', AID.data.toCsv(d.team.fields, d.team.rows)), 800);
   }
 
   function sanitizeFilters() {
@@ -141,7 +155,7 @@ window.AID = window.AID || {};
     $('btn-load').hidden = !dataset;
     const status = $('data-status');
     status.textContent = dataset
-      ? sourceName + ' · ' + dataset.devsWithData + ' developers · ' + AID.data.monthLabel(dataset.months[0], true) + ' – ' + AID.data.monthLabel(dataset.months[dataset.months.length - 1], true)
+      ? sourceName + (dataset.teams && teamFile && !/^Demo/.test(sourceName) ? ' + ' + teamFile.name : '') + ' · ' + dataset.devsWithData + ' developers · ' + AID.data.monthLabel(dataset.months[0], true) + ' – ' + AID.data.monthLabel(dataset.months[dataset.months.length - 1], true)
       : '';
     $('btn-theme').textContent = { auto: 'Theme: auto', light: 'Theme: light', dark: 'Theme: dark' }[state.theme];
   }
@@ -218,8 +232,8 @@ window.AID = window.AID || {};
     const slot = (label, ok, name) => el('div.file-slot' + (ok ? '.ok' : ''), AID.ui.icon(ok ? 'check' : 'flat'), ok ? label + ': ' + name : label + ': not loaded');
     const dz = el('div.dropzone#dropzone',
       el('h2', { text: 'Load your data' }),
-      el('p', { text: 'Drop both CSV files here, or choose them. The files stay in this browser tab. Nothing is uploaded.' }),
-      el('div.file-slots', slot('Developers', !!pending.developers, pending.devName), slot('Monthly metrics', !!pending.metrics, pending.metName)),
+      el('p', { text: 'Drop the CSV files here, or choose them. The files stay in this browser tab. Nothing is uploaded.' }),
+      el('div.file-slots', slot('Developers', !!pending.developers, pending.devName), slot('Monthly metrics', !!pending.metrics, pending.metName), slot('Team bugs (optional)', !!teamFile, teamFile && teamFile.name)),
       el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center' } },
         el('button.btn.primary', { type: 'button', onclick: () => $('file-input').click(), text: 'Choose CSV files' }),
         el('button.btn', { type: 'button', onclick: loadDemo, text: 'Explore with demo data' }),
@@ -236,6 +250,8 @@ window.AID = window.AID || {};
         '; formats like 2025-03, 2025-03-01, 3/1/2025, or Mar 2025 all work), plus the Cursor, Jira, and GitHub columns. Copilot columns (',
         el('code', { text: 'copilotActiveDays' }), ', ', el('code', { text: 'copilotTotalRequests' }), ', …) are optional. With them, the AI tool switch shows Copilot or both tools. Add ', el('code', { text: 'combinedActiveDays' }),
         ' (days with either tool, counted from daily data) for exact active days in the Cursor + Copilot view.'),
+      el('p', { style: { marginTop: '8px' } }, 'team_monthly_metrics.csv (optional) — one row per team per month: ', el('code', { text: 'squadId' }), ', a month column, ',
+        el('code', { text: 'bugsDiscovered' }), ' (bugs found in the team\'s code), and ', el('code', { text: 'escapedBugs' }), ' (the bugs found in production). Adds bug rates to the Executive summary.'),
       el('p', { style: { marginTop: '8px', color: 'var(--muted)' }, text: 'Column order does not matter. Extra columns are ignored. Missing metric columns show as empty. Download the demo CSVs to see the exact format.' }));
     main.append(el('div.welcome', dz, req));
   }

@@ -13,6 +13,7 @@ window.AID = window.AID || {};
       id: 'm-pipeline', title: 'From CSV files to results',
       short: 'The dashboard joins the two CSV files on developer and month, then calculates every result in the browser.',
       how: [
+        'The optional team_monthly_metrics.csv has one row per team (squadId) per month, with bugsDiscovered and escapedBugs. It is only used by the team-level effect.',
         'Each row of developer_monthly_metrics.csv is one developer in one month. The dashboard matches it to developers.csv by devId (or email, cursorUserId, jiraAccountId, githubLogin).',
         'The month column can be in many formats (2025-03, 3/1/2025, Mar 2025). The dashboard converts all of them to one calendar month.',
         'A blank AI usage cell (Cursor or Copilot) counts as 0, because no usage means zero. A blank Jira or GitHub cell counts as missing, not 0. Missing values are left out of averages.',
@@ -115,6 +116,33 @@ window.AID = window.AID || {};
         'Developers chose to adopt. If they adopted because they expected to become more productive, part of the effect may not come from AI. Check the event study and the dose-response pattern.',
       ],
       see: ['m-control', 'm-event', 'm-ci'],
+    },
+    {
+      id: 'm-team', title: 'Team-level AI effect (team PRs and bugs)',
+      short: 'Some results only exist per team (bugs), or can move between developers in a team (review work). The team-level effect checks these on team-months.',
+      how: [
+        'Team = squadId. For each team and month, the dashboard counts the developers, the developers with {thr}+ {tool} active days, and the PRs merged.',
+        'Adoption share = developers with {thr}+ active days ÷ developers in the team that month.',
+        'PRs merged per developer (team level) = the team\'s PRs merged ÷ its developers, with the adoption share of the same month.',
+        'Bugs found per 100 PRs = 100 × bugsDiscovered ÷ PRs merged, over {bugWindow} months. Its adoption share is the average of the {bugWindow} months that end one month earlier, because bugs are found weeks or months after the code is merged. Production bugs per 100 PRs uses escapedBugs in the same way.',
+        'The newest {bugSkip} months of the data are left out of bug rates: the bugs from their PRs are not found yet.',
+        'The model: value = team effect + month effect + b × adoption share. Team effects remove fixed differences between teams. Month effects remove company-wide changes. Each team-month counts by its developers (or its PRs for bug rates).',
+        'b is the change from 0% to 100% team adoption. The % is b ÷ the value expected at 0% adoption.',
+        'The 95% CI treats each team as one unit, because the months of one team are not independent. The effect needs {minTeams}+ teams.',
+        'The model uses every team in the selected org and domain. The team and job level filters do not apply.',
+      ],
+      read: [
+        '−20% on bugs per 100 PRs means: a team with all developers using AI has 20% fewer bugs per PR than with none.',
+        'Compare the team PRs per developer effect with the developer effect on PRs merged. A smaller team effect means part of the developer gain came from other people in the team, for example from their review time.',
+      ],
+      watch: [
+        'There are far fewer teams than developers, so the CI is wider. "Too uncertain" is common for small selections.',
+        'A team that moved between squadIds counts in its current team for all months.',
+        'A missing team-month in the team file counts as missing, not as 0 bugs. Write 0 for a month with no bugs.',
+        'If the effect differs between orgs, the number for all orgs leans toward the orgs whose adoption changed the most. Filter by org to compare.',
+        'Teams chose how fast to adopt. A team that adopted early can differ in ways the team effect does not remove, for example a new codebase.',
+      ],
+      see: ['m-did', 'm-ci'],
     },
     {
       id: 'm-control', title: 'Comparison group and robustness check',
@@ -248,9 +276,10 @@ window.AID = window.AID || {};
     // ---- Executive summary ----
     {
       id: 'c-verdict', title: 'Verdict', area: 'Executive summary',
-      short: 'The answer to "Are we seeing improvements since the adoption of AI?", based on the AI effect for the headline metric and the 5 core productivity metrics.',
+      short: 'The answer to "Are we seeing improvements since the adoption of AI?", based on the AI effect for the headline metric and the 4 core productivity metrics.',
       how: [
-        'Core metrics: PRs merged, Jira issues done, story points done, median cycle time, and median time to merge. Quality guardrail: reopen rate.',
+        'Core metrics: PRs merged, Jira issues done, median cycle time, and median time to merge. Quality guardrail: reopen rate.',
+        'Story points are not a core metric: each team sets its own point values, and teams can inflate them after AI arrives. Story points are still on the Explore tab.',
         'Yes: the headline metric improved, and at least half of the core metrics improved. No: more core metrics got worse than improved, or the headline got worse. Partly: some improved. Not yet: none clearly changed.',
         'The large number is the AI effect for the headline metric. You choose the headline metric at the top right.',
         'The usage-level scorecard shows the effect for light, medium, and heavy users. The check below it shows the effect with each comparison group.',
@@ -263,15 +292,17 @@ window.AID = window.AID || {};
     },
     {
       id: 'c-kpi', title: 'KPI tiles', area: 'Executive summary',
-      short: 'The change in each key metric. Productivity tiles show the AI effect. Adoption and spend tiles show the before/after change.',
+      short: 'The change in each key metric, in groups. Output tiles sit next to the tiles that show whether the extra output is real, the review load, and quality.',
       how: [
-        'Productivity tiles (PRs merged to reopen rate): the AI effect, with actual vs expected below it.',
+        'The tiles are in five groups: AI use and cost, output and speed, whether the extra output is real (PR size, churn), review load, and quality.',
+        'Developer tiles: the AI effect, with actual vs expected below it. Team tiles: the team-level effect, from 0% to 100% team adoption.',
+        'A dashed tile with "No data" names the column to add to the CSV.',
         'AI adoption: the share of developer-months with {thr}+ active days, after the split minus before the split, in percentage points.',
         '{tool} spend: the average per-developer change in monthly spend, before vs after. Cost per merged PR = spend ÷ PRs merged in the after period.',
         'The sparkline is the monthly average per developer. The vertical line is the company rollout month.',
       ],
       read: ['Green = improved, red = worse. A plain number = no clear change. Hover over a tile for its 95% CI.'],
-      see: ['m-did', 'm-ci'],
+      see: ['m-did', 'm-team', 'm-ci'],
     },
     {
       id: 'c-event', title: 'AI effect by month since adoption', area: 'Executive summary',
@@ -482,7 +513,7 @@ window.AID = window.AID || {};
     spendDollars: '{tool} cost. Use it with cost per merged PR to judge value.',
     throughput: 'Depends on how teams split work into issues. Compare it within a team or developer over time (the AI effect does this), not between teams.',
     thoughputWithSubtasks: 'Like throughput, but subtasks count too. Teams that split work into many subtasks get higher numbers.',
-    storyPoints: 'Story points are team-relative estimates. Compare them within a team or developer over time, not between teams. Watch for estimate inflation.',
+    storyPoints: 'Story points are team-relative estimates. Compare them within a team or developer over time, not between teams. Watch for estimate inflation. For this reason, the Executive summary does not use them.',
     storiesdone: 'Stories completed.',
     bugsDone: 'Bugs fixed. A rise can mean more capacity, or more bugs to fix.',
     tasksDone: 'Tasks completed.',
@@ -499,6 +530,12 @@ window.AID = window.AID || {};
     medianTimeToMergeHours: 'Lower is better. A rise after AI adoption often means more PRs wait for review: the bottleneck moves to reviewers.',
     jiraLinkedPrs: 'PRs linked to a Jira issue. Shows how well work is tracked.',
     costPerMergedPr: 'Lower is better. {tool} spend ÷ PRs merged, for months with at least one merged PR.',
+    medianPrSizeLines: 'Lower is better: small PRs are easier to review and safer to ship. If PRs merged rises with PR size, AI makes more code, not only more PRs.',
+    churnedLines: 'Lower is better. A raw count, so it grows with lines added. Churn rate is fairer.',
+    churnRatePct: 'Lower is better. A rise after adoption means more AI code is rewritten soon after it is merged: part of the extra output is rework.',
+    prsReviewed: 'No better direction. A rise means more review work. If non-adopters review adopters\' extra PRs, their own output can drop, and the AI effect then looks too large.',
+    reviewCommentsGiven: 'No better direction. Use it with PRs reviewed to see how much review work each PR needs.',
+    medianTimeToFirstReviewHours: 'Lower is better. A rise means PRs wait longer for a reviewer: the bottleneck moves to review.',
   };
   const KPI_EXTRA = {
     'kpi-adoption': {
@@ -561,6 +598,7 @@ window.AID = window.AID || {};
       tool: AID.tool.label, toolAny: AID.tool.any,
       thr, hi, thrMinus: thr - 1, hiMinus: hi - 1, onboard: s.onboard ?? 3, minGroup: s.minGroup || 5, ramp: s.ramp || 0,
       minCtrl: AID.analysis.MIN_CONTROL_DEVS, minMonths: AID.analysis.MIN_MONTHS_PER_SIDE,
+      minTeams: AID.analysis.MIN_TEAMS, bugWindow: AID.analysis.BUG_WINDOW, bugSkip: AID.analysis.BUG_SKIP_LAST,
     };
   }
   function fill(text, v) { return text.replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : m)); }

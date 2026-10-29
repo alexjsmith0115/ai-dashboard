@@ -12,6 +12,9 @@ window.AID = window.AID || {};
   const MIN_CONTROL_DEVS = 10;
   const WIDE_CI = 2;             // a 95% CI wider than this (200 % points) is too uncertain to show as a bar or point   // DiD: a month needs this many untreated developer-months to estimate its month effect
   const OTHER = 'Other';
+  const MIN_TEAMS = 8;           // team-level effect: fewer teams than this = not enough data
+  const BUG_WINDOW = 3;          // bug rate = bugs found ÷ PRs merged, over this many months
+  const BUG_SKIP_LAST = 2;       // the newest months are left out of the bug rate: bugs from recent PRs are not found yet
 
   // ---------- Basic stats ----------
   const isNum = (x) => x != null && isFinite(x);
@@ -582,6 +585,121 @@ window.AID = window.AID || {};
       };
     }
 
+    // ---------- Team-level AI effect ----------
+    // Bugs are counted per team, and review load moves between developers in a team. So this check runs on team-months.
+    // Model: y = team effect + month effect + b × team adoption share, weighted (by developers, or by PRs for bug rates).
+    // b = the change in y from 0% to 100% of the team using AI. The 95% CI is clustered by team.
+    // It uses every team in the selected org and domain. The team and job level filters do not apply (one team has no comparison).
+    // prsPerDev: PRs merged ÷ developers, with the adoption share in the same month.
+    // bugRate / escapedBugRate: 100 × bugs found ÷ PRs merged over the BUG_WINDOW months ending in month t. Adoption share = the
+    // average over the BUG_WINDOW months ending one month before t, because bugs are found weeks or months after the code is merged.
+    const lastData = ds.months[ds.months.length - 1];
+    let teamPanel = null;
+    function teamMonths() {
+      if (teamPanel) return teamPanel;
+      teamPanel = new Map(); // team -> Map(month index -> { devs, adopted, prs })
+      for (const d of ds.devs) {
+        if ((f.icOnly && !d.isIC) || (f.org && d.org !== f.org) || (f.domain && d.domain !== f.domain)) continue;
+        if (!teamPanel.has(d.team)) teamPanel.set(d.team, new Map());
+        const byMonth = teamPanel.get(d.team);
+        // New hires' onboarding months count here: their code and their bugs belong to the team.
+        for (const r of d.rows) {
+          let c = byMonth.get(r.mi);
+          if (!c) byMonth.set(r.mi, (c = { devs: 0, adopted: 0, prs: 0 }));
+          c.devs++;
+          if (r.v.activeDays >= thr) c.adopted++;
+          if (isNum(r.v.prsMerged)) c.prs += r.v.prsMerged;
+        }
+      }
+      return teamPanel;
+    }
+
+    function teamObs(key) {
+      const meta = AID.TM[key];
+      const bugs = ds.teams && ds.teams.rows;
+      if (meta.col && !(ds.teams && ds.teams.cols[meta.col])) return [];
+      const obs = [];
+      for (const [team, byMonth] of teamMonths()) {
+        for (const mi of months) {
+          const c = byMonth.get(mi);
+          if (!c) continue;
+          if (!meta.col) { if (c.devs >= 2) obs.push({ g: team, t: mi, y: c.prs / c.devs, s: c.adopted / c.devs, w: c.devs }); continue; }
+          if (mi > lastData - BUG_SKIP_LAST) continue;
+          const tb = bugs.get(team);
+          if (!tb) continue;
+          let nb = 0, np = 0, ok = true;
+          for (let k = 0; k < BUG_WINDOW && ok; k++) {
+            const b = tb.get(mi - k), p = byMonth.get(mi - k);
+            if (!b || !isNum(b[meta.col]) || !p) ok = false; else { nb += b[meta.col]; np += p.prs; }
+          }
+          const shares = [];
+          for (let k = 1; k <= BUG_WINDOW; k++) { const p = byMonth.get(mi - k); if (p && p.devs) shares.push(p.adopted / p.devs); }
+          if (ok && np > 0 && shares.length >= 2) obs.push({ g: team, t: mi, y: (100 * nb) / np, s: mean(shares), w: np });
+        }
+      }
+      return obs;
+    }
+
+    // Weighted within transform: removes team and month means from x (alternating projections, as in didFit).
+    function demean(obs, x) {
+      const out = Float64Array.from(x);
+      for (let it = 0; it < 300; it++) {
+        let delta = 0;
+        for (const by of ['g', 't']) {
+          const sw = new Map(), sx = new Map();
+          obs.forEach((o, i) => { sw.set(o[by], (sw.get(o[by]) || 0) + o.w); sx.set(o[by], (sx.get(o[by]) || 0) + o.w * out[i]); });
+          obs.forEach((o, i) => { const m = sx.get(o[by]) / sw.get(o[by]); out[i] -= m; delta = Math.max(delta, Math.abs(m)); });
+        }
+        if (delta < 1e-10) break;
+      }
+      return out;
+    }
+
+    const teamCache = new Map();
+    // Same result shape as did(): before = expected at 0% adoption, after = expected at 100% adoption, pct = b ÷ before.
+    function teamEffect(key) {
+      if (teamCache.has(key)) return teamCache.get(key);
+      const meta = AID.TM[key];
+      const obs = teamObs(key);
+      const G = new Set(obs.map((o) => o.g)).size;
+      const res = { key, n: G, obs: obs.length, team: true, status: 'nodata', missingCol: meta.col && !(ds.teams && ds.teams.cols[meta.col]) ? meta.col : null };
+      teamCache.set(key, res);
+      if (G < MIN_TEAMS) return res;
+      const yt = demean(obs, obs.map((o) => o.y)), st = demean(obs, obs.map((o) => o.s));
+      let sxx = 0, sxy = 0;
+      obs.forEach((o, i) => { sxx += o.w * st[i] * st[i]; sxy += o.w * st[i] * yt[i]; });
+      if (sxx < 1e-9) return res; // adoption share never changed within a team
+      const b = sxy / sxx;
+      const score = new Map();
+      obs.forEach((o, i) => score.set(o.g, (score.get(o.g) || 0) + o.w * st[i] * (yt[i] - b * st[i])));
+      let v = 0;
+      for (const x of score.values()) v += x * x;
+      const se = Math.sqrt((v / (sxx * sxx)) * (G / (G - 1)));
+      let sw = 0, sy = 0;
+      for (const o of obs) { sw += o.w; sy += o.w * (o.y - b * o.s); }
+      const base = sy / sw;
+      if (!(Math.abs(base) > 0)) return res;
+      const h = tCrit(G - 1) * se;
+      const sig = b - h > 0 || b + h < 0;
+      const good = meta.better === 'down' ? b < 0 : b > 0;
+      Object.assign(res, {
+        before: base, after: base + b, diff: b, pct: b / Math.abs(base), lo: (b - h) / Math.abs(base), hi: (b + h) / Math.abs(base), sePct: se / Math.abs(base),
+        wide: (2 * h) / Math.abs(base) > WIDE_CI, sig, good, status: !sig ? 'flat' : good ? 'improved' : 'worse',
+      });
+      res.score = meta.better === 'down' ? -res.pct : res.pct;
+      return res;
+    }
+
+    // Monthly value for all teams together (weighted the same way as the model), for the KPI sparklines.
+    function teamSeries(key) {
+      const obs = teamObs(key);
+      return months.map((mi) => {
+        let sw = 0, sy = 0;
+        for (const o of obs) if (o.t === mi) { sw += o.w; sy += o.w * o.y; }
+        return sw ? sy / sw : null;
+      });
+    }
+
     // Before/after windows for the method note.
     const allRowsInRange = devs.flatMap(rowsOf);
     const windowOf = (p) => { const m = allRowsInRange.filter((r) => phaseOf(r) === p).map((r) => r.mi); return m.length ? [Math.min(...m), Math.max(...m)] : null; };
@@ -589,6 +707,7 @@ window.AID = window.AID || {};
     return {
       ds, state, devs, months, onboarding, minGroup, control, CONTROLS, otherTool, tierBasis, spendCuts, spendAfter, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
       splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, did, didFit, didByGroup, eventStudy, compareCross, groupValues,
+      teamEffect, teamSeries, hasTeams: !!ds.teams,
       adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,
       beforeWindow: windowOf('before'), afterWindow: windowOf('after'),
       // Shown when the split leaves no months before it (e.g. the selected AI tool was in use from the first month).
@@ -604,5 +723,5 @@ window.AID = window.AID || {};
 
   function range(a, b) { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; }
 
-  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, MIN_CONTROL_DEVS, NON_ADOPTER_DAYS, OTHER, WIDE_CI };
+  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, MIN_CONTROL_DEVS, NON_ADOPTER_DAYS, OTHER, WIDE_CI, MIN_TEAMS, BUG_WINDOW, BUG_SKIP_LAST };
 })(window.AID);

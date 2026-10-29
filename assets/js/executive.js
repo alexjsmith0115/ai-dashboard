@@ -5,7 +5,7 @@ window.AID = window.AID || {};
   const { el, select, seg, statusChip, answerChip, table, card, icon, titleRow } = AID.ui;
   const F = AID.fmt;
 
-  const HEADLINE_OPTIONS = ['prsMerged', 'throughput', 'storyPoints', 'medianCycleDays', 'medianTimeToMergeHours'];
+  const HEADLINE_OPTIONS = ['prsMerged', 'throughput', 'medianCycleDays', 'medianTimeToMergeHours'];
   const GROUP_LEVELS = [{ value: 'org', label: 'Org' }, { value: 'domain', label: 'Domain' }, { value: 'team', label: 'Team' }, { value: 'level', label: 'Job level' }];
   const BAR_LIMIT = 20;
   let stickyObs = null;
@@ -54,7 +54,7 @@ window.AID = window.AID || {};
     }
 
     page.appendChild(verdictCard(ctx, head, keyRes, quality, tiers, metric));
-    page.appendChild(kpiGrid(ctx, keyRes, quality));
+    page.appendChild(kpiSection(ctx, keyRes, quality));
     page.appendChild(eventStudyCard(ctx, metric));
 
     // ---- Trends ----
@@ -99,6 +99,11 @@ window.AID = window.AID || {};
     if (quality.status !== 'nodata') {
       const q = quality.status === 'worse' ? 'got worse' : quality.status === 'improved' ? 'improved' : 'held steady';
       parts.push('Quality (reopen rate) ', el('strong', { text: q }), ' (' + F.pct(quality.pct) + '). ');
+    }
+    const bugs = ctx.teamEffect('bugRate');
+    if (bugs.pct != null && !bugs.wide) {
+      const q = bugs.status === 'worse' ? 'rose' : bugs.status === 'improved' ? 'fell' : 'did not clearly change';
+      parts.push('Bugs per 100 PRs ', el('strong', { text: q }), ' as teams adopted AI (' + F.pct(bugs.pct) + ' at full adoption). ');
     }
     // Dose: if AI drives the change, the effect grows with usage.
     const lt = tiers[1], hv = tiers[3];
@@ -180,40 +185,87 @@ window.AID = window.AID || {};
   }
 
   // ---------------- KPI tiles ----------------
-  // Each tile leads with the change. Productivity tiles show the DiD effect: actual vs expected without AI.
-  function kpiGrid(ctx, keyRes, quality) {
-    const grid = el('div.kpi-grid');
+  // Tiles in five groups. AI can raise PR counts by making PRs larger, by adding rework, or by moving work to reviewers,
+  // so output tiles sit next to the tiles that show whether the extra output is real, what it costs reviewers, and its quality.
+  // Developer tiles show the DiD effect (actual vs expected without AI). Team tiles show the team-level effect (0% vs 100% adoption).
+  // Ordered so that each row is full on wide screens: 4 (wider tiles, span = the full row) | 2 + 3 | 3 + 2.
+  const KPI_GROUPS = [
+    { title: 'Output and speed', sub: 'AI effect: actual vs expected without AI. The developer tiles here and time to merge set the verdict.', span: 5, tiles: ['prsMerged', 'throughput', 'medianCycleDays', 'team:prsPerDev'] },
+    { title: 'Is the extra output real?', sub: 'More PRs can come from larger PRs, or from code that is soon rewritten.', tiles: ['medianPrSizeLines', 'churnRatePct'] },
+    { title: 'Review load', sub: 'More code needs more review. Slower first reviews or merges mean reviewers are the bottleneck.', tiles: ['prsReviewed', 'medianTimeToFirstReviewHours', 'medianTimeToMergeHours'] },
+    { title: 'Quality', sub: 'More output with more bugs or reopened tickets is not a gain.', tiles: ['reopenRatePct', 'team:bugRate', 'team:escapedBugRate'] },
+    { title: 'AI use and cost', sub: 'Before vs after the split.', tiles: ['adoption', 'spend'] },
+  ];
+
+  function kpiSection(ctx, keyRes, quality) {
     const t = AID.charts.theme();
     const markerIdx = ctx.perDev ? null : ctx.months.indexOf(ctx.rolloutIdx);
-    const signed = (v, f) => (v > 0 ? '+' : v < 0 ? '−' : '') + f(Math.abs(v));
+    const known = new Map(keyRes.concat([quality]).map((c) => [c.key, c]));
+    const make = (id) => {
+      if (id === 'adoption') return adoptionTile(ctx, t, markerIdx);
+      if (id === 'spend') return spendTile(ctx, markerIdx);
+      if (id.startsWith('team:')) return teamTile(ctx, id.slice(5), markerIdx);
+      return devTile(ctx, known.get(id) || ctx.did(id), markerIdx);
+    };
+    return el('div.kpi-groups', KPI_GROUPS.map((g) => el('section.kpi-group', { style: '--span: ' + (g.span || g.tiles.length) + '; --cols: ' + g.tiles.length },
+      el('div.kpi-group-head', el('h3', { text: g.title }), el('p', { text: g.sub })),
+      el('div.kpi-grid', g.tiles.map(make)))));
+  }
+  const kpiChip = (c) => (c.wide ? el('span.chip', icon('warn'), '95% CI too wide') : statusChip(c));
+  const signed = (v, f) => (v > 0 ? '+' : v < 0 ? '−' : '') + f(Math.abs(v));
 
-    // Adoption tile: share of developer-months with the active threshold, before vs after.
+  // Adoption tile: share of developer-months with the active threshold, before vs after.
+  function adoptionTile(ctx, t, markerIdx) {
     const adopt = ctx.adoptionSeries();
     const share = phaseShare(ctx, (r) => r.v.activeDays >= ctx.thr);
     const pts = share.b != null && share.a != null ? share.a - share.b : null;
-    grid.appendChild(tile('AI adoption', AID.tool.label, pts != null ? signed(Math.round(pts * 100), String) : '—', pts != null ? 'pts' : '', null,
+    return tile('AI adoption', AID.tool.label, pts != null ? signed(Math.round(pts * 100), String) : '—', pts != null ? 'pts' : '', null,
       [el('span', { text: pts != null ? pct0(share.b) + ' → ' + pct0(share.a) + ' of developers used ' + AID.tool.any + ' ' + ctx.thr + '+ days / mo' : (ctx.noBeforeText ? 'No months before the split. See Settings.' : 'Not enough data') })],
-      AID.charts.sparkline(adopt.active, { color: t.series[0], markerIndex: markerIdx, zero: true }), null, 'kpi-adoption'));
+      AID.charts.sparkline(adopt.active, { color: t.series[0], markerIndex: markerIdx, zero: true }), null, 'kpi-adoption');
+  }
 
-    // Spend tile: change in AI tool spend per developer per month.
+  // Spend tile: change in AI tool spend per developer per month.
+  function spendTile(ctx, markerIdx) {
     const sp = ctx.compare('spendDollars');
     const cppRes = ctx.compare('costPerMergedPr');
     const spend = ctx.series('spendDollars', { agg: 'mean' }).series[0];
-    grid.appendChild(tile(AID.M.spendDollars.label, AID.tool.label, sp.diff != null ? signed(sp.diff, (v) => F.value(v, 'usd')) : '—', sp.diff != null ? '/ dev / mo' : '', null,
+    return tile(AID.M.spendDollars.label, AID.tool.label, sp.diff != null ? signed(sp.diff, (v) => F.value(v, 'usd')) : '—', sp.diff != null ? '/ dev / mo' : '', null,
       [el('span', { text: sp.diff != null ? F.value(sp.before, 'usd') + ' → ' + F.value(sp.after, 'usd') + ' · ' + F.value(cppRes.after, 'usd') + ' per merged PR' : (ctx.noBeforeText ? 'No months before the split. See Settings.' : 'Not enough data') })],
-      spend ? AID.charts.sparkline(spend.values, { markerIndex: markerIdx, zero: true }) : null, null, 'kpi-spend'));
+      spend ? AID.charts.sparkline(spend.values, { markerIndex: markerIdx, zero: true }) : null, null, 'kpi-spend');
+  }
 
-    for (const c of keyRes.concat([quality])) {
-      const m = AID.M[c.key];
-      const s = ctx.series(c.key, { agg: 'mean' }).series[0];
-      const unit = m.unit === 'count' ? ' / dev / mo' : '';
-      const tone = c.status === 'improved' ? 'good' : c.status === 'worse' ? 'bad' : null;
-      grid.appendChild(tile(m.label, m.source, c.pct != null ? F.pct(c.pct) : '—', '', tone,
-        [statusChip(c), el('span', { text: c.pct != null ? F.metric(c.after, c.key, { short: true }) + ' vs ' + F.metric(c.before, c.key, { short: true }) + ' expected' + unit : 'Not enough data' })],
-        s ? AID.charts.sparkline(s.values, { markerIndex: markerIdx }) : null,
-        c.lo != null ? ciText(c) : null, 'metric:' + c.key));
+  // The CSV column a developer metric needs, if no row has a value for it.
+  function missingColumn(ctx, key) {
+    const col = key === 'churnRatePct' ? 'churnedLines' : key;
+    if (!AID.M[col] || !AID.M[col].optional) return null;
+    return ctx.ds.rows.some((r) => r.raw[col] != null) ? null : col;
+  }
+
+  function devTile(ctx, c, markerIdx) {
+    const m = AID.M[c.key];
+    const col = missingColumn(ctx, c.key);
+    if (col) return missingTile(m.label, m.source, 'Add the ' + col + ' column to developer_monthly_metrics.csv.', 'metric:' + c.key);
+    const s = ctx.series(c.key, { agg: 'mean' }).series[0];
+    const unit = m.unit === 'count' ? ' / dev / mo' : '';
+    const tone = c.wide ? null : c.status === 'improved' ? 'good' : c.status === 'worse' ? 'bad' : null;
+    return tile(m.label, m.source, c.wide ? 'Too uncertain' : c.pct != null ? F.pct(c.pct) : '—', '', tone,
+      [kpiChip(c), el('span', { text: c.pct != null ? F.metric(c.after, c.key, { short: true }) + ' vs ' + F.metric(c.before, c.key, { short: true }) + ' expected' + unit : 'Not enough data' })],
+      s ? AID.charts.sparkline(s.values, { markerIndex: markerIdx }) : null,
+      c.lo != null ? ciText(c) : null, 'metric:' + c.key);
+  }
+
+  function teamTile(ctx, key, markerIdx) {
+    const m = AID.TM[key];
+    const c = ctx.teamEffect(key);
+    if (c.missingCol) {
+      return missingTile(m.label, 'Team', ctx.hasTeams ? 'Add the ' + c.missingCol + ' column to team_monthly_metrics.csv.' : 'Load team_monthly_metrics.csv with a ' + m.col + ' column.', 'm-team');
     }
-    return grid;
+    const tone = c.wide ? null : c.status === 'improved' ? 'good' : c.status === 'worse' ? 'bad' : null;
+    const v = (x) => F.value(x, 'count');
+    return tile(m.label, 'Team', c.wide ? 'Too uncertain' : c.pct != null ? F.pct(c.pct) : '—', '', tone,
+      [kpiChip(c), el('span', { text: c.pct != null ? v(c.before) + ' → ' + v(c.after) + ' from 0% to 100% team adoption · ' + c.n + ' teams' : c.n ? 'Not enough data: ' + c.n + ' teams (needs ' + AID.analysis.MIN_TEAMS + '+)' : 'Not enough data' })],
+      AID.charts.sparkline(ctx.teamSeries(key), { markerIndex: markerIdx }),
+      c.lo != null ? ciText(c) : null, 'm-team');
   }
 
   // Share of before-period and after-period developer-months that pass a test.
@@ -227,6 +279,13 @@ window.AID = window.AID || {};
     return { b: n.before ? k.before / n.before : null, a: n.after ? k.after / n.after : null };
   }
   function pct0(v) { return Math.round(v * 100) + '%'; }
+
+  function missingTile(label, src, text, helpId) {
+    return el('div.card.kpi.missing',
+      el('div.kpi-label', el('span.kpi-name', el('span', { text: label }), helpId ? AID.help.button(helpId) : null), el('span.src', { text: src })),
+      el('div.kpi-value', { text: 'No data' }),
+      el('div.kpi-meta', el('span', { text })));
+  }
 
   function tile(label, src, value, unit, tone, meta, spark, title, helpId) {
     return el('div.card.kpi',

@@ -5,7 +5,9 @@ window.AID = window.AID || {};
   'use strict';
 
   const DEV_FIELDS = ['devId', 'squadId', 'email', 'name', 'orgLeader', 'orgName', 'department', 'manager', 'role', 'jobLevel', 'isIC', 'cursorUserId', 'jiraAccountId', 'githubLogin', 'primaryProject', 'primaryRepo', 'copilotUserId', 'copilotTotalSpend'];
-  const MET_FIELDS = ['devId', 'month', 'spendDollars', 'contractTotalSpend', 'activeDays', 'totalRequests', 'composerRequests', 'agentRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages', 'totalLinesAdded', 'acceptedLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts', 'totalRejects', 'primaryModel', 'storyPoints', 'throughput', 'thoughputWithSubtasks', 'storiesdone', 'bugsDone', 'tasksDone', 'subtasksDone', 'medianCycleDays', 'meanCycleDays', 'reopenedTickets', 'reopenRatePct', 'prsOpened', 'prsMerged', 'additions', 'deletions', 'changedFiles', 'medianTimeToMergeHours', 'jiraLinkedPrs', 'copilotSpendDollars', 'copilotContractTotalSpend', 'copilotActiveDays', 'copilotTotalRequests', 'copilotAgentRequests', 'copilotChatRequests', 'copilotTotalLinesAdded', 'copilotAcceptedLinesAdded', 'copilotTotalLinesDeleted', 'copilotAcceptedLinesDeleted', 'copilotTotalTabsShown', 'copilotTotalTabsAccepted', 'copilotTotalApplies', 'copilotTotalAccepts', 'copilotPrimaryModel', 'combinedActiveDays'];
+  const MET_FIELDS = ['devId', 'month', 'spendDollars', 'contractTotalSpend', 'activeDays', 'totalRequests', 'composerRequests', 'agentRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages', 'totalLinesAdded', 'acceptedLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts', 'totalRejects', 'primaryModel', 'storyPoints', 'throughput', 'thoughputWithSubtasks', 'storiesdone', 'bugsDone', 'tasksDone', 'subtasksDone', 'medianCycleDays', 'meanCycleDays', 'reopenedTickets', 'reopenRatePct', 'prsOpened', 'prsMerged', 'additions', 'deletions', 'changedFiles', 'medianTimeToMergeHours', 'jiraLinkedPrs', 'copilotSpendDollars', 'copilotContractTotalSpend', 'copilotActiveDays', 'copilotTotalRequests', 'copilotAgentRequests', 'copilotChatRequests', 'copilotTotalLinesAdded', 'copilotAcceptedLinesAdded', 'copilotTotalLinesDeleted', 'copilotAcceptedLinesDeleted', 'copilotTotalTabsShown', 'copilotTotalTabsAccepted', 'copilotTotalApplies', 'copilotTotalAccepts', 'copilotPrimaryModel', 'combinedActiveDays',
+    'medianPrSizeLines', 'churnedLines', 'prsReviewed', 'reviewCommentsGiven', 'medianTimeToFirstReviewHours'];
+  const TEAM_FIELDS = ['squadId', 'month', 'bugsDiscovered', 'escapedBugs'];
 
   const ORGS = [
     { name: 'Commerce', leader: 'Dana Whitfield', effect: 0.24, speed: 0.33,
@@ -57,6 +59,16 @@ window.AID = window.AID || {};
     const WORK_DAYS = 22;
     const pickDays = (n) => { const all = [...Array(WORK_DAYS).keys()]; for (let i = 0; i < n; i++) { const j = i + Math.floor(drnd() * (WORK_DAYS - i)); [all[i], all[j]] = [all[j], all[i]]; } return all.slice(0, n); };
     const unionDays = (a, b) => (a && b ? new Set(pickDays(a).concat(pickDays(b))).size : Math.max(a, b));
+    // PR size, churn, review, and team bug values: one more stream, so all earlier values stay the same.
+    const xrnd = mulberry32((seed || 20251026) ^ 0xb065);
+    const xnormal = () => { let u = 0, v = 0; while (!u) u = xrnd(); while (!v) v = xrnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+    const xpoisson = (l) => {
+      if (l <= 0) return 0;
+      if (l > 40) return Math.max(0, Math.round(l + Math.sqrt(l) * xnormal()));
+      const L = Math.exp(-l); let k = 0, p = 1;
+      do { k++; p *= xrnd(); } while (p > L);
+      return k - 1;
+    };
     const r1 = (v) => Math.round(v * 10) / 10;
     const monthKey = (off) => { const i = START.y * 12 + START.m - 1 + off; return Math.floor(i / 12) + '-' + String((i % 12) + 1).padStart(2, '0'); };
     const calMonth = (off) => (START.m - 1 + off) % 12; // 0 = Jan
@@ -153,6 +165,8 @@ window.AID = window.AID || {};
         const additions = Math.round(prsMerged * linesPerPr);
         const ttm = prsMerged ? r1(clamp(20 * (1 + 0.3 * intensity * maturity) * Math.exp(0.35 * normal()), 1, 200)) : '';
 
+        const reviews = xpoisson({ SDE1: 3, SDE2: 5, SDE3: 6.5, M1: 1.5 }[p.lv] * season * onboarding * (1 + 0.35 * clamp((m - ROLLOUT) / 12, 0, 1)));
+
         // Cursor usage
         const req = activeDays ? Math.round(activeDays * (6 + 14 * propensity) * Math.exp(0.2 * normal())) : 0;
         const agentShare = clamp(0.08 + 0.025 * Math.max(0, m - PILOT), 0.08, 0.6);
@@ -208,6 +222,11 @@ window.AID = window.AID || {};
           copilotTotalLinesDeleted: Math.round(cpLinesAdded * 0.35), copilotAcceptedLinesDeleted: Math.round(cpAcceptedLines * 0.3),
           copilotTotalTabsShown: cpTabsShown, copilotTotalTabsAccepted: cpTabsAcc, copilotTotalApplies: cpApplies, copilotTotalAccepts: cpAccepts, copilotPrimaryModel: cpModel,
           combinedActiveDays: unionDays(activeDays, cpDays),
+          // AI makes PRs larger and adds rework (more where quality > 0). Review load grows as the whole company adopts.
+          medianPrSizeLines: prsMerged ? Math.round(linesPerPr * 1.35 * Math.exp(0.15 * xnormal())) : '',
+          churnedLines: Math.round(additions * clamp(0.035 + intensity * maturity * (quality > 0 ? 0.05 : 0.02) + 0.008 * xnormal(), 0, 0.3)),
+          prsReviewed: reviews, reviewCommentsGiven: Math.round(reviews * (1.5 + 2 * xrnd())),
+          medianTimeToFirstReviewHours: prsMerged ? r1(clamp(5 * (1 + 0.5 * intensity * maturity) * Math.exp(0.4 * xnormal()), 0.2, 120)) : '',
         });
       }
       if (cpSpendTotal > 0) {
@@ -226,11 +245,38 @@ window.AID = window.AID || {};
       r.copilotContractTotalSpend = cpByMonth[r.month].toFixed(2);
     }
 
+    // Team bugs: bugs found in a month come from the team's PRs of that month and the two before it.
+    // At full adoption the bug rate rises 35% for Customer Experience and falls 14% elsewhere (the same quality signs as reopen rate).
+    const teamOf = new Map(people.map((p) => [p.id, p]));
+    const teams = new Map();
+    for (const r of metRows) {
+      const p = teamOf.get(r.devId), squadId = p.dev.squadId;
+      if (!teams.has(squadId)) teams.set(squadId, { quality: p.org.name === 'Customer Experience' ? 1 : -0.4, months: new Map() });
+      const t = teams.get(squadId);
+      const c = t.months.get(r.month) || { prs: 0, devs: 0, adopted: 0 };
+      c.prs += r.prsMerged; c.devs++; if (r.activeDays >= 5) c.adopted++;
+      t.months.set(r.month, c);
+    }
+    const teamRows = [];
+    const LAG = [0.4, 0.35, 0.25];
+    for (const [squadId, t] of teams) {
+      for (let m = 0; m < N_MONTHS; m++) {
+        if (!t.months.has(monthKey(m))) continue;
+        let l = 0;
+        LAG.forEach((w, k) => { const c = t.months.get(monthKey(m - k)); if (c) l += w * c.prs * 0.1 * (1 + 0.35 * t.quality * (c.adopted / c.devs)); });
+        const bugs = xpoisson(l);
+        let escaped = 0;
+        for (let i = 0; i < bugs; i++) if (xrnd() < 0.3) escaped++;
+        teamRows.push({ squadId, month: monthKey(m), bugsDiscovered: bugs, escapedBugs: escaped });
+      }
+    }
+
     return {
       dev: { fields: DEV_FIELDS, rows: devRows },
       met: { fields: MET_FIELDS, rows: metRows },
+      team: { fields: TEAM_FIELDS, rows: teamRows },
     };
   }
 
-  AID.demo = { generate, DEV_FIELDS, MET_FIELDS };
+  AID.demo = { generate, DEV_FIELDS, MET_FIELDS, TEAM_FIELDS };
 })(window.AID);

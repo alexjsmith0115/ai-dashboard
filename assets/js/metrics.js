@@ -45,6 +45,13 @@ window.AID = window.AID || {};
     { key: 'changedFiles', label: 'Files changed', short: 'Files', source: 'GitHub', unit: 'count', better: 'neutral' },
     { key: 'medianTimeToMergeHours', label: 'Median time to merge', short: 'Time to merge', source: 'GitHub', unit: 'hours', better: 'down', desc: 'Median hours from PR open to merge.' },
     { key: 'jiraLinkedPrs', label: 'Jira-linked PRs', short: 'Linked PRs', source: 'GitHub', unit: 'count', better: 'neutral' },
+    // optional: newer columns. A file without them gets one "optional columns" note, not a missing-column warning.
+    { key: 'medianPrSizeLines', label: 'Median PR size', short: 'PR size', source: 'GitHub', unit: 'count', better: 'down', optional: true, desc: 'Median lines changed (additions + deletions) per merged PR.' },
+    { key: 'churnedLines', label: 'Churned lines', short: 'Churn', source: 'GitHub', unit: 'count', better: 'down', optional: true, desc: 'Lines added in the month that were deleted or rewritten within 21 days.' },
+    { key: 'churnRatePct', label: 'Churn rate', short: 'Churn %', source: 'GitHub', unit: 'pct', better: 'down', derived: true, desc: 'churnedLines ÷ GitHub additions, capped at 100%.' },
+    { key: 'prsReviewed', label: 'PRs reviewed', short: 'Reviews', source: 'GitHub', unit: 'count', better: 'neutral', optional: true, desc: 'Other developers\' PRs that the developer reviewed (approved, requested changes, or commented on).' },
+    { key: 'reviewCommentsGiven', label: 'Review comments given', short: 'Review comments', source: 'GitHub', unit: 'count', better: 'neutral', optional: true, desc: 'Review comments the developer wrote on other developers\' PRs.' },
+    { key: 'medianTimeToFirstReviewHours', label: 'Median time to first review', short: 'Time to review', source: 'GitHub', unit: 'hours', better: 'down', optional: true, desc: 'Median hours from PR open to the first review, for the developer\'s own PRs.' },
     { key: 'costPerMergedPr', label: '{tool} spend per merged PR', short: '$ / PR', usage: true, unit: 'usd', better: 'down', derived: true, desc: '{tool} spend ÷ PRs merged, for months with at least one merged PR.' },
   ];
   for (const m of METRICS) if (m.usage) { m.labelT = m.label; m.descT = m.desc; }
@@ -79,9 +86,22 @@ window.AID = window.AID || {};
   function available(key) { const m = BY_KEY[key]; return !!m && !(m.cursorOnly && AID.tool.key === 'copilot'); }
 
   // The metrics that answer "are developers more productive?" on the executive page.
-  const KEY_PRODUCTIVITY = ['prsMerged', 'throughput', 'storyPoints', 'medianCycleDays', 'medianTimeToMergeHours'];
+  // Story points are left out: each team sets its own point values, and teams can inflate them after AI arrives.
+  const KEY_PRODUCTIVITY = ['prsMerged', 'throughput', 'medianCycleDays', 'medianTimeToMergeHours'];
   const QUALITY_GUARDRAIL = 'reopenRatePct';
+  // Shown next to the core metrics on the executive page when the file has them, but not counted in the verdict.
+  // AI can raise PR counts by making PRs larger, rework more, or review load heavier. These show whether it did.
+  const CONTEXT_METRICS = ['medianPrSizeLines', 'churnRatePct', 'prsReviewed', 'medianTimeToFirstReviewHours'];
   const OUTCOME_METRICS = METRICS.filter((m) => !m.usage).map((m) => m.key).concat(['costPerMergedPr']);
+
+  // Team-level metrics (one value per team per month). Bugs are only counted per team, in team_monthly_metrics.csv.
+  // col: the team file column the metric needs.
+  const TEAM_METRICS = [
+    { key: 'prsPerDev', label: 'PRs merged per developer (team level)', short: 'Team PRs / dev', unit: 'count', better: 'up' },
+    { key: 'bugRate', label: 'Bugs found per 100 PRs', short: 'Bug rate', unit: 'count', better: 'down', col: 'bugsDiscovered' },
+    { key: 'escapedBugRate', label: 'Production bugs per 100 PRs', short: 'Production bug rate', unit: 'count', better: 'down', col: 'escapedBugs' },
+  ];
+  const TEAM_BY_KEY = Object.fromEntries(TEAM_METRICS.map((m) => [m.key, m]));
 
   const GROUPS = [
     { key: 'org', label: 'Org' },
@@ -135,7 +155,10 @@ window.AID = window.AID || {};
   AID.M = BY_KEY;
   AID.KEY_PRODUCTIVITY = KEY_PRODUCTIVITY;
   AID.QUALITY_GUARDRAIL = QUALITY_GUARDRAIL;
+  AID.CONTEXT_METRICS = CONTEXT_METRICS;
   AID.OUTCOME_METRICS = OUTCOME_METRICS;
+  AID.TEAM_METRICS = TEAM_METRICS;
+  AID.TM = TEAM_BY_KEY;
   AID.GROUPS = GROUPS;
   AID.TOOLS = TOOLS;
   AID.COPILOT_KEYS = COPILOT_KEYS;

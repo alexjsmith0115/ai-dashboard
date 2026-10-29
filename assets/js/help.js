@@ -100,6 +100,7 @@ window.AID = window.AID || {};
         'Step 2. For each adopter month after adoption: expected = developer effect + month effect. This is the value without AI.',
         'Step 3. AI effect for that month = actual − expected.',
         'Step 4. The dashboard averages the effect for each adopter, then across adopters. The % is the average effect divided by the average expected value.',
+        'For a group, a usage tier, or a month since adoption, the % divides by the average expected value for all adopters in the selection. A group with a small expected value then does not get a very large % and CI, and all groups compare on one scale.',
         'Each adopter has their own adoption month. Adopters are never used as the comparison for each other after they adopt, so a staggered rollout gives correct results.',
         'The model uses every developer in the date range. The org, domain, team, and level filters only choose which adopters to average. This keeps the month effects stable for small groups.',
         'An adopter needs {minMonths}+ months before adoption and {minMonths}+ months after. A month needs {minCtrl}+ comparison developers, otherwise its adopter months are left out. Ramp-up months ({ramp}) after adoption count as neither side.',
@@ -175,7 +176,8 @@ window.AID = window.AID || {};
       how: [
         'For each job level (or org): the before/after % change of each usage tier, minus the before/after % change of the non-adopters at the same level.',
         'The 95% CI uses the standard errors of both cells.',
-        'Cells with fewer than {minGroup} developers are hidden.',
+        'The % changes divide by the average before value for all developers in the selection, so all cells use one scale.',
+        'Cells with fewer than {minGroup} developers, or with a 95% CI wider than 200 pts, are hidden.',
       ],
       read: [
         '+20 pts for heavy SDE2s means: heavy-user SDE2s improved 20 percentage points more than non-adopter SDE2s over the same months.',
@@ -280,7 +282,10 @@ window.AID = window.AID || {};
         'Gray points that climb toward 0: adopters were already improving. Part of the effect may not come from AI.',
         'Blue points: the size of the effect and how fast it builds. The summary line above the chart gives the first clear month and the average from then on.',
       ],
-      watch: ['Later points have fewer developers and a wider band.'],
+      watch: [
+        'Later points have fewer developers and a wider band.',
+        'A month with a 95% CI wider than 200 pts is not drawn. The axis stops near the points, so a very wide band is cut at the chart edge.',
+      ],
       see: ['m-event', 'm-did'],
     },
     {
@@ -314,7 +319,8 @@ window.AID = window.AID || {};
       short: 'The AI effect on the headline metric for each org, domain, team, or job level, ranked from largest to smallest.',
       how: [
         'Each bar is the AI effect averaged over the adopters in that group. The model itself is fitted on all developers.',
-        'Groups with fewer than {minGroup} adopters with enough data are left out of the chart and the ranking.',
+        'The % divides by the average expected value for all adopters, not the group\'s own, so groups compare on one scale.',
+        'Groups with fewer than {minGroup} adopters with enough data, or with a 95% CI wider than 200 pts, are left out of the chart and the ranking. If no group is left, the chart is empty.',
         'With more than 20 groups, the chart shows the top 10 and the bottom 10. The table lists all of them.',
       ],
       read: [
@@ -340,9 +346,9 @@ window.AID = window.AID || {};
       short: 'The AI effect for every group, with adopters, adoption, average active days, expected and actual values, CI, and status.',
       how: [
         'Adopters = adopters with {minMonths}+ months before and after adoption.',
-        'Expected = the average value without AI. Actual = the average value. AI effect = (actual − expected) ÷ expected.',
+        'Expected = the average value without AI. Actual = the average value. AI effect = (actual − expected) ÷ the expected value for all adopters.',
       ],
-      read: ['Click a column header to sort. Pale rows are small samples.'],
+      read: ['Click a column header to sort. Pale rows have a small sample ("Small sample") or a 95% CI wider than 200 pts ("Too uncertain").'],
       see: ['m-did', 'm-samples'],
     },
     {
@@ -351,7 +357,8 @@ window.AID = window.AID || {};
       how: [
         'AI effect view: each bar = the AI effect for adopters at that level and tier. Non-adopters have no AI months, so they have no bar.',
         'Lift view: each bar = the tier\'s before/after change minus the change of non-adopters at the same level, in percentage points.',
-        'Whiskers = 95% CI. Cells with fewer than {minGroup} developers are hidden.',
+        'Each % divides by the value for all adopters (AI effect) or all developers (Lift), so all cells use one scale.',
+        'Whiskers = 95% CI. Cells with fewer than {minGroup} developers, or with a CI wider than 200 pts, are hidden. A whisker that goes past the axis ends in an arrow.',
       ],
       read: [
         'Compare the heavy bar with the light bar at each level. A large gap at one level means AI helps that level most.',
@@ -403,8 +410,8 @@ window.AID = window.AID || {};
       id: 'c-groupheat', title: 'Impact by group, every key metric', area: 'Explore',
       short: 'The before/after change of each key metric for each group, as a colored table.',
       how: [
-        'Each cell uses the before/after method for that group and metric.',
-        'Color strength grows with the size of the change, up to ±30%. Pale cells are not statistically clear or have fewer than {minGroup} developers.',
+        'Each cell uses the before/after method for that group and metric. The % divides by the average before value for all developers, so groups compare on one scale.',
+        'Color strength grows with the size of the change, up to ±30%. Pale cells are not statistically clear, have fewer than {minGroup} developers, or have a 95% CI wider than 200 pts.',
         'Level × usage gives one row per job level and usage tier.',
       ],
       read: ['Blue = better, red = worse. For cycle time, time to merge, and reopen rate, lower is better, so a fall is blue.'],

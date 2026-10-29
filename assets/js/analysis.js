@@ -9,7 +9,8 @@ window.AID = window.AID || {};
   // Any of these raw columns > 0 in a month means the developer was working. The first such month is their start month.
   // Both AI tools count in every view, so the start month (and the onboarding months left out) is the same for each AI tool view.
   const WORK_KEYS = ['prsOpened', 'prsMerged', 'throughput', 'thoughputWithSubtasks', 'storyPoints', 'additions', 'activeDays', 'copilotActiveDays'];
-  const MIN_CONTROL_DEVS = 10;   // DiD: a month needs this many untreated developer-months to estimate its month effect
+  const MIN_CONTROL_DEVS = 10;
+  const WIDE_CI = 2;             // a 95% CI wider than this (200 % points) is too uncertain to show as a bar or point   // DiD: a month needs this many untreated developer-months to estimate its month effect
   const OTHER = 'Other';
 
   // ---------- Basic stats ----------
@@ -208,6 +209,7 @@ window.AID = window.AID || {};
       const h = tCrit(n - 1) * se;
       base = Math.abs(base);
       Object.assign(res, { diff: md, pct: md / base, lo: (md - h) / base, hi: (md + h) / base, sePct: se / base });
+      res.wide = (2 * h) / base > WIDE_CI;
       // Usage that starts near zero (most AI usage metrics before rollout) makes % change meaningless.
       res.fromZero = !!meta.usage && base < 0.1 * Math.abs(res.after);
       const sig = md - h > 0 || md + h < 0;
@@ -220,7 +222,9 @@ window.AID = window.AID || {};
     }
 
     // Paired before/after comparison across developers. Each developer is compared with their own baseline.
-    function compare(key, devList) {
+    // base = denominator for the % (default: this list's own before value). Subgroups pass the value for all developers
+    // in the selection, so a group with a small before value does not get a very large % and CI.
+    function compare(key, devList, base) {
       const list = devList || devs;
       const bs = [], as = [], diffs = [];
       for (const d of list) {
@@ -230,7 +234,7 @@ window.AID = window.AID || {};
       const n = diffs.length;
       const res = { key, n, before: mean(bs), after: mean(as), status: 'nodata' };
       if (n < 2 || !res.before) return res;
-      return finish(res, mean(diffs), sd(diffs) / Math.sqrt(n), n, res.before);
+      return finish(res, mean(diffs), sd(diffs) / Math.sqrt(n), n, base || res.before);
     }
 
     // ---------- Difference-in-differences (imputation estimator) ----------
@@ -333,7 +337,8 @@ window.AID = window.AID || {};
 
     // The average AI effect for a set of developers. Same result shape as compare():
     // before = expected value without AI, after = actual value, pct = effect as % of expected.
-    function did(key, devList, ctl) {
+    // base: as in compare(). Subgroups pass the expected value for all adopters in the selection.
+    function did(key, devList, ctl, base) {
       const fit = didFit(key, ctl);
       const per = [];
       for (const d of devList || devs) { const x = fit.devEffects.get(d); if (x) per.push(x); }
@@ -341,7 +346,7 @@ window.AID = window.AID || {};
       const res = { key, n, method: 'did', control: fit.control, before: mean(per.map((x) => x.yhat)), after: mean(per.map((x) => x.y)), status: 'nodata' };
       if (n < 2 || !res.before) return res;
       const taus = per.map((x) => x.tau);
-      return finish(res, mean(taus), sd(taus) / Math.sqrt(n), n, res.before);
+      return finish(res, mean(taus), sd(taus) / Math.sqrt(n), n, base || res.before);
     }
 
     // Effect by month relative to adoption. Months before adoption show the leftover difference from the fitted
@@ -350,15 +355,17 @@ window.AID = window.AID || {};
       const o = Object.assign({ from: -6, to: 12 }, opts);
       const fit = didFit(key);
       const inSet = new Set(devList || devs);
+      // One denominator for every month: the average expected value for these adopters.
+      const base = Math.abs(did(key, devList).before || 0);
       const out = [];
       for (let k = o.from; k <= o.to; k++) {
         const b = ((k < 0 ? fit.pre : fit.post).get(k) || []).filter((x) => inSet.has(x.d));
         const n = b.length;
         const row = { k, n, post: k >= 0 };
-        if (n >= MIN_CONTROL_DEVS) {
-          const es = b.map((x) => x.e), base = Math.abs(mean(b.map((x) => (k < 0 ? x.y : x.yhat))));
+        if (n >= MIN_CONTROL_DEVS && base) {
+          const es = b.map((x) => x.e);
           const m = mean(es), h = tCrit(n - 1) * sd(es) / Math.sqrt(n);
-          Object.assign(row, { pct: m / base, lo: (m - h) / base, hi: (m + h) / base });
+          Object.assign(row, { pct: m / base, lo: (m - h) / base, hi: (m + h) / base, wide: (2 * h) / base > WIDE_CI });
         }
         out.push(row);
       }
@@ -366,7 +373,9 @@ window.AID = window.AID || {};
     }
 
     // DiD effect per group, in the same shape as compareByGroup().
+    // lowSample = too few developers, or a CI too wide to read (wide). Charts leave these groups out.
     function didByGroup(metric, groupKey) {
+      const base = did(metric).before;
       const byG = new Map();
       for (const d of devs) {
         const g = groupOf(d, groupKey);
@@ -375,11 +384,11 @@ window.AID = window.AID || {};
       }
       const out = [];
       for (const [g, list] of byG) {
-        const c = did(metric, list);
+        const c = did(metric, list, null, base);
         const sample = list[0];
         out.push(Object.assign(c, {
           group: g, devCount: list.length, adoption: adoptionRate(list),
-          avgActiveDays: mean(list.map(usageAfter)), lowSample: c.n < minGroup,
+          avgActiveDays: mean(list.map(usageAfter)), lowSample: c.n < minGroup || !!c.wide,
           parent: groupKey === 'team' ? sample.domain : groupKey === 'domain' ? sample.org : '',
           manager: groupKey === 'team' ? sample.manager : '',
         }));
@@ -401,6 +410,7 @@ window.AID = window.AID || {};
     }
 
     function compareByGroup(metric, groupKey) {
+      const base = compare(metric).before;
       const byG = new Map();
       for (const d of devs) {
         const g = groupOf(d, groupKey);
@@ -409,11 +419,11 @@ window.AID = window.AID || {};
       }
       const out = [];
       for (const [g, list] of byG) {
-        const c = compare(metric, list);
+        const c = compare(metric, list, base);
         const sample = list[0];
         out.push(Object.assign(c, {
           group: g, devCount: list.length, adoption: adoptionRate(list),
-          avgActiveDays: mean(list.map(usageAfter)), lowSample: c.n < minGroup,
+          avgActiveDays: mean(list.map(usageAfter)), lowSample: c.n < minGroup || !!c.wide,
           parent: groupKey === 'team' ? sample.domain : groupKey === 'domain' ? sample.org : '',
           manager: groupKey === 'team' ? sample.manager : '',
         }));
@@ -425,15 +435,16 @@ window.AID = window.AID || {};
     // lift = cell's improvement minus the same row's non-adopters' improvement (positive = better), in % points.
     // method 'did' uses the DiD effect in each cell instead of the before/after change (no lift: non-adopters are the comparison).
     function compareCross(metric, rowKey, method) {
-      const measure = method === 'did' ? did : compare;
+      const measure = method === 'did' ? (list, base) => did(metric, list, null, base) : (list, base) => compare(metric, list, base);
+      const denom = measure().before; // one denominator for every cell
       const rowVals = [...new Set(devs.map((d) => groupOf(d, rowKey)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
       return rowVals.map((rv) => {
         const inRow = devs.filter((d) => groupOf(d, rowKey) === rv);
         const cells = TIERS.map((tier, ti) => {
           const list = inRow.filter((d) => tierIndex(d) === ti);
-          return Object.assign(measure(metric, list), { tier, tierShort: TIER_SHORT[ti], devCount: list.length });
+          return Object.assign(measure(list, denom), { tier, tierShort: TIER_SHORT[ti], devCount: list.length });
         });
-        for (const c of cells) c.lowSample = c.n < minGroup || c.pct == null;
+        for (const c of cells) c.lowSample = c.n < minGroup || c.pct == null || !!c.wide;
         const base = cells[0];
         for (const c of cells.slice(1)) {
           if (c.lowSample || base.lowSample) continue;
@@ -441,6 +452,7 @@ window.AID = window.AID || {};
           c.lift = c.score - base.score;
           c.liftLo = c.lift - h; c.liftHi = c.lift + h;
           c.liftSig = c.liftLo > 0 || c.liftHi < 0;
+          if (c.liftHi - c.liftLo > WIDE_CI) { c.lowSample = true; c.wide = true; } // lift too uncertain to show
         }
         return { row: rv, cells, devCount: inRow.length };
       });
@@ -592,5 +604,5 @@ window.AID = window.AID || {};
 
   function range(a, b) { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; }
 
-  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, MIN_CONTROL_DEVS, NON_ADOPTER_DAYS, OTHER };
+  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, MIN_CONTROL_DEVS, NON_ADOPTER_DAYS, OTHER, WIDE_CI };
 })(window.AID);

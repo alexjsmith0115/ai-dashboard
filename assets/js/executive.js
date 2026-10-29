@@ -36,7 +36,7 @@ window.AID = window.AID || {};
     const quality = ctx.did(AID.QUALITY_GUARDRAIL);
     const tiers = ctx.TIERS.map((tier) => {
       const list = ctx.devs.filter((d) => ctx.tierOf(d) === tier);
-      return Object.assign(ctx.did(metric, list), { tier, devCount: list.length });
+      return Object.assign(ctx.did(metric, list, null, head.before), { tier, devCount: list.length }); // % of the headline's expected value
     });
 
     // The headline metric bar stays under the top bar while the page scrolls. When pinned, it also shows the headline effect.
@@ -102,7 +102,7 @@ window.AID = window.AID || {};
     }
     // Dose: if AI drives the change, the effect grows with usage.
     const lt = tiers[1], hv = tiers[3];
-    if (lt.pct != null && hv.pct != null) {
+    if (lt.pct != null && hv.pct != null && !lt.wide && !hv.wide) {
       const gap = hv.score - lt.score;
       parts.push('The effect is ', el('strong', { text: F.pct(hv.pct) }), ' for heavy AI users vs ', el('strong', { text: F.pct(lt.pct) }), ' for light users — ',
         gap > 0.02 ? 'it grows with usage, which is a sign that AI causes it.' : gap < -0.02 ? 'it does not grow with usage, so AI is not the likely cause.' : 'too small a gap to link the effect to usage.');
@@ -123,7 +123,8 @@ window.AID = window.AID || {};
 
     // Right side: change by AI usage tier. The bars share one scale with zero marked: right = positive, left = negative.
     // Color = better (blue) or worse (red), pale when not statistically clear, as in the group charts.
-    const vals = tiers.slice(1).map((x) => x.pct).filter((v) => v != null);
+    const shown = (x) => x.pct != null && !x.wide;
+    const vals = tiers.slice(1).filter(shown).map((x) => x.pct);
     const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = Math.max(0.01, hi - lo);
     const pos = (v) => ((v - lo) / span) * 100;
     const t = AID.charts.theme();
@@ -134,17 +135,17 @@ window.AID = window.AID || {};
           el('div.val', { text: '—', style: { color: 'var(--muted)' } }));
       }
       const bar = el('div.tier-track', lo < 0 ? el('div.tier-zero', { style: { left: pos(0) + '%' } }) : null,
-        x.pct != null ? el('div.tier-bar', { style: { left: Math.min(pos(0), pos(x.pct)) + '%', width: Math.max(1, Math.abs(pos(x.pct) - pos(0))) + '%', background: changeColor(x, t) } }) : null);
+        shown(x) ? el('div.tier-bar', { style: { left: Math.min(pos(0), pos(x.pct)) + '%', width: Math.max(1, Math.abs(pos(x.pct) - pos(0))) + '%', background: changeColor(x, t) } }) : null);
       return el('div.score-row', { style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
         el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.n + ' developers' + (x.lo != null ? ' · ' + ciText(x) : '') }), bar),
-        el('div.val', { text: x.pct != null ? F.pct(x.pct) : '—' }));
+        el('div.val', { text: x.wide ? 'Too uncertain' : x.pct != null ? F.pct(x.pct) : '—', style: x.wide ? { color: 'var(--muted)', fontSize: '12px' } : null }));
     });
     const right = el('div.verdict-side',
       el('div.card-title', el('p.verdict-q', { text: 'AI effect on ' + meta.short + ' by AI usage level' }), AID.help.button('m-tiers')),
       el('div.scorecard', rows),
       el('p.method-note', { text: (ctx.tierBasis === 'spend'
         ? 'Usage level = thirds of the adopters by average ' + AID.M.spendDollars.label + ' per month in the after period. Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.'
-        : 'Usage level = average ' + AID.M.activeDays.label + ' per month in the after period.') + ' Blue = better, red = worse' + (meta.better === 'down' ? ' (lower is better for this metric)' : '') + '. Pale = not statistically clear.' }),
+        : 'Usage level = average ' + AID.M.activeDays.label + ' per month in the after period.') + ' Each effect is a % of the expected value for all adopters. Blue = better, red = worse' + (meta.better === 'down' ? ' (lower is better for this metric)' : '') + '. Pale = not statistically clear.' }),
       robustness(ctx, metric));
 
     return el('section.card.verdict', left, right);
@@ -239,12 +240,15 @@ window.AID = window.AID || {};
   // ---------------- Event study ----------------
   function eventStudyCard(ctx, metric) {
     const meta = AID.M[metric];
-    const rows = ctx.eventStudy(metric);
+    // Months with a CI wider than WIDE_CI are not drawn: their value says nothing.
+    const rows = ctx.eventStudy(metric).map((r) => (r.wide ? Object.assign({}, r, { pct: null, lo: null, hi: null }) : r));
+    const wide = rows.filter((r) => r.wide).length;
     const labels = rows.map((r) => (r.k > 0 ? '+' + r.k : String(r.k)));
     const c = card({
       id: 'exec-event', height: 300, help: 'c-event',
       title: 'AI effect on ' + meta.short + ' by month since adoption',
-      sub: 'Each point = actual vs expected without AI, as a % of expected. Band = 95% confidence interval.' + (meta.better === 'down' ? ' Lower is better for this metric.' : ''),
+      sub: 'Each point = actual minus expected without AI, as a % of the average expected value for all adopters. Band = 95% confidence interval.' + (meta.better === 'down' ? ' Lower is better for this metric.' : '') +
+        (wide ? ' ' + wide + ' month' + (wide > 1 ? 's are' : ' is') + ' not drawn: too uncertain.' : ''),
     });
     if (!rows.some((r) => r.pct != null)) { c.empty('Not enough adopters with months before and after adoption.'); return c.el; }
     c.box.before(el('p.chart-summary', eventSummary(rows, meta)));
@@ -259,7 +263,7 @@ window.AID = window.AID || {};
     }));
     c.setTable(() => table([
       { label: 'Months since adoption', value: (r) => r.k, format: (v, r) => (r.k > 0 ? '+' + r.k : String(r.k)) },
-      { label: 'Effect', num: true, value: (r) => r.pct, format: (v) => F.pct(v) },
+      { label: 'Effect', num: true, value: (r) => r.pct, format: (v, r) => (r.wide ? 'Too uncertain' : F.pct(v)) },
       { label: '95% CI', num: true, value: (r) => r.lo, format: (v, r) => (r.lo == null ? '—' : F.pct(r.lo, 0) + ' to ' + F.pct(r.hi, 0)) },
       { label: 'Developers', num: true, value: (r) => r.n },
     ], rows, { sortCol: 0, sortDir: 1 }));
@@ -373,15 +377,16 @@ window.AID = window.AID || {};
       ins.appendChild(el('li', el('span', 'Across ' + levelLabel + 's, adoption and improvement are ', el('strong', { text: s + (corr.r >= 0 ? ' linked' : ' inversely linked') }), ' (r = ' + corr.r.toFixed(2) + '). ' +
         (corr.r >= 0.3 ? 'Groups that use AI more got a larger effect.' : corr.r <= -0.3 ? 'Higher adoption did not bring larger gains.' : 'Adoption alone does not explain the differences.'))));
     }
-    const small = rows.length - reliable.length;
+    const small = rows.filter((r) => r.n < ctx.minGroup).length, wide = rows.length - reliable.length - small;
     if (small) ins.appendChild(el('li', el('span', { text: small + ' ' + levelLabel + (small > 1 ? 's have' : ' has') + ' fewer than ' + ctx.minGroup + ' adopters with months before and after adoption. They are left out of the chart and ranking, and shown pale in the table.' })));
+    if (wide) ins.appendChild(el('li', el('span', { text: wide + ' ' + levelLabel + (wide > 1 ? 's have' : ' has') + ' a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts, which is too uncertain to read. They are left out of the chart and ranking, and shown pale in the table.' })));
     wrap.appendChild(el('div.card', el('div.card-title', { style: { marginBottom: '10px' } }, el('h3', { text: 'Key findings', style: { fontSize: '15px' } }), AID.help.button('c-groups')), ins));
 
     const grid = el('div.grid-3-2');
     wrap.appendChild(grid);
 
-    // Ranked diverging bars
-    const ranked = reliable.length ? reliable : rows;
+    // Ranked diverging bars. Groups with a small sample or a very wide CI are never drawn.
+    const ranked = reliable;
     let shown = ranked, note = '';
     if (ranked.length > BAR_LIMIT) {
       shown = ranked.slice(0, BAR_LIMIT / 2).concat(ranked.slice(-BAR_LIMIT / 2));
@@ -390,11 +395,12 @@ window.AID = window.AID || {};
     const barCard = card({
       id: 'exec-groups', help: 'c-groups', height: Math.max(180, shown.length * 26 + 50),
       title: 'AI effect on ' + meta.short + ' by ' + levelLabel,
-      sub: 'Blue = better, red = worse. Pale bars are not statistically clear (the 95% confidence interval includes zero).',
+      sub: 'Effect as a % of the expected value for all adopters, so groups compare on one scale. Blue = better, red = worse. Pale bars are not statistically clear (the 95% confidence interval includes zero).',
     });
     grid.appendChild(barCard.el);
+    if (!ranked.length) barCard.empty('No ' + levelLabel + ' has ' + ctx.minGroup + '+ adopters and a readable CI. Use a higher group level, or lower the minimum group size in Settings.');
     if (note) barCard.foot.textContent = note;
-    queueMicrotask(() => AID.charts.bars(barCard.canvas, {
+    if (ranked.length) queueMicrotask(() => AID.charts.bars(barCard.canvas, {
       labels: shown.map((r) => r.group), values: shown.map((r) => r.pct), horizontal: true,
       colors: shown.map((r) => changeColor(r, t)), axisFmt: (v) => Math.round(v * 100) + '%', valueFmt: (v) => F.pct(v, 0),
       tooltipLines: (i) => { const r = shown[i]; return [F.metric(r.after, metric) + ' actual vs ' + F.metric(r.before, metric) + ' expected', ciText(r), r.n + ' developers · ' + Math.round((r.adoption || 0) * 100) + '% adoption']; },
@@ -436,7 +442,7 @@ window.AID = window.AID || {};
       { label: 'Actual', num: true, value: (r) => r.after, format: (v) => F.metric(v, metric, { short: true }) },
       { label: 'AI effect', num: true, value: (r) => r.pct, sortValue: (r) => r.score, format: (v) => F.pct(v) },
       { label: '95% CI', num: true, value: (r) => r.lo, format: (v, r) => (r.lo == null ? '—' : F.pct(r.lo, 0) + ' to ' + F.pct(r.hi, 0)) },
-      { label: 'Status', value: (r) => r.status, cell: (r) => (r.lowSample ? el('span.chip', icon('warn'), 'Small sample') : statusChip(r)) });
+      { label: 'Status', value: (r) => r.status, cell: (r) => (r.lowSample ? el('span.chip', icon('warn'), r.wide ? 'Too uncertain' : 'Small sample') : statusChip(r)) });
     return table(cols, rows, { sortCol: cols.findIndex((c) => c.label === 'AI effect'), sortDir: -1, rowClass: (r) => (r.lowSample ? 'muted' : '') });
   }
 
@@ -492,7 +498,7 @@ window.AID = window.AID || {};
     }
     const tierIdx = [1, 2, 3];
     const hidden = data.reduce((s, r) => s + tierIdx.filter((ti) => r.cells[ti].lowSample && r.cells[ti].devCount > 0).length, 0);
-    if (hidden) ins.appendChild(el('li', el('span', { text: hidden + ' cell' + (hidden > 1 ? 's have' : ' has') + ' fewer than ' + ctx.minGroup + ' developers with enough data and ' + (hidden > 1 ? 'are' : 'is') + ' hidden from the chart.' })));
+    if (hidden) ins.appendChild(el('li', el('span', { text: hidden + ' cell' + (hidden > 1 ? 's are' : ' is') + ' hidden from the chart: fewer than ' + ctx.minGroup + ' developers with enough data, or a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts.' })));
 
     // Grouped bars: one group per row value, one bar per usage tier.
     const cellOf = (si, i) => data[i].cells[tierIdx[si]];
@@ -505,11 +511,12 @@ window.AID = window.AID || {};
       id: 'exec-cross', height: 340, help: 'c-cross',
       title: lift ? meta.short + ': improvement beyond non-adopters' : 'AI effect on ' + meta.short + ' by ' + dimLabel.toLowerCase() + ' and usage tier',
       sub: (lift
-        ? 'Each bar = the tier\'s before/after change minus the change of non-adopters in the same ' + dimLabel.toLowerCase() + ', in percentage points. Positive = better.'
-        : 'Each bar = actual vs expected without AI, for adopters in that tier. Non-adopters have no AI months, so they have no bar.' + (meta.better === 'down' ? ' Lower is better for this metric, so a negative effect is an improvement.' : '')) +
+        ? 'Each bar = the tier\'s before/after change minus the change of non-adopters in the same ' + dimLabel.toLowerCase() + ', in percentage points of the before value for all developers. Positive = better.'
+        : 'Each bar = actual minus expected without AI, for adopters in that tier, as a % of the expected value for all adopters. Non-adopters have no AI months, so they have no bar.' + (meta.better === 'down' ? ' Lower is better for this metric, so a negative effect is an improvement.' : '')) +
         ' Whiskers = 95% confidence interval.',
     });
-    queueMicrotask(() => AID.charts.grouped(c.canvas, {
+    if (!series.some((x) => x.values.some((v) => v != null))) c.empty(ctx.noBeforeText && lift ? ctx.noBeforeText : 'Every cell has fewer than ' + ctx.minGroup + ' developers with enough data, or a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts. See the table.');
+    else queueMicrotask(() => AID.charts.grouped(c.canvas, {
       labels: data.map((r) => r.row), series,
       axisFmt: (v) => Math.round(v * 100) + (lift ? ' pts' : '%'),
       valueFmt: lift ? fmtPts0 : (v) => F.pct(v),

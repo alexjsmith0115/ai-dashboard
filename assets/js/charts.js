@@ -169,7 +169,19 @@ window.AID = window.AID || {};
     },
   };
 
+  // Value axis range for values with CIs. The axis always covers the values and zero. It covers the CIs only up to
+  // one value-range beyond the values, so that one very wide CI does not squash every other bar. Ends are rounded to a step.
+  function ciRange(values, los, his) {
+    const v = values.filter((x) => x != null), l = los.filter((x) => x != null), h = his.filter((x) => x != null);
+    const lo0 = Math.min(0, ...v), hi0 = Math.max(0, ...v), span = Math.max(0.1, hi0 - lo0);
+    let lo = Math.max(Math.min(lo0, ...l), lo0 - span), hi = Math.min(Math.max(hi0, ...h), hi0 + span);
+    const step = [0.01, 0.02, 0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10, 20, 50].find((s) => (hi - lo) / s <= 7) || 100;
+    lo = Math.floor(lo / step - 1e-9) * step; hi = Math.ceil(hi / step + 1e-9) * step;
+    return { min: lo, max: hi, step };
+  }
+
   // 95% CI whiskers on bars. Each dataset may carry errors: [[lo, hi] | null, ...] in data units.
+  // A whisker that goes past the axis ends in an arrow at the edge.
   const errorBars = {
     id: 'errorBars',
     afterDatasetsDraw(chart, _a, opts) {
@@ -183,12 +195,13 @@ window.AID = window.AID || {};
         meta.data.forEach((bar, i) => {
           const e = ds.errors[i];
           if (!e || ds.data[i] == null) return;
-          const x = Math.round(bar.x) + 0.5, y0 = ys.getPixelForValue(e[0]), y1 = ys.getPixelForValue(e[1]);
+          const x = Math.round(bar.x) + 0.5, y0 = ys.getPixelForValue(Math.max(e[0], ys.min)), y1 = ys.getPixelForValue(Math.min(e[1], ys.max));
           const cap = Math.min(4, bar.width / 4);
           ctx.beginPath();
           ctx.moveTo(x, y0); ctx.lineTo(x, y1);
-          ctx.moveTo(x - cap, y0); ctx.lineTo(x + cap, y0);
-          ctx.moveTo(x - cap, y1); ctx.lineTo(x + cap, y1);
+          // y0 = bottom end (lower bound), y1 = top end (upper bound) in pixels.
+          if (e[0] < ys.min) { ctx.moveTo(x - 4, y0 - 6); ctx.lineTo(x, y0); ctx.lineTo(x + 4, y0 - 6); } else { ctx.moveTo(x - cap, y0); ctx.lineTo(x + cap, y0); }
+          if (e[1] > ys.max) { ctx.moveTo(x - 4, y1 + 6); ctx.lineTo(x, y1); ctx.lineTo(x + 4, y1 + 6); } else { ctx.moveTo(x - cap, y1); ctx.lineTo(x + cap, y1); }
           // Surface-colored halo keeps the whisker legible over any bar fill.
           ctx.strokeStyle = t.surface; ctx.lineWidth = 3; ctx.stroke();
           ctx.strokeStyle = t.text2; ctx.lineWidth = 1; ctx.stroke();
@@ -351,13 +364,13 @@ window.AID = window.AID || {};
     ensure();
     const t = theme();
     const axisFmt = o.axisFmt || ((v) => AID.fmt.value(v, o.unit, { short: true }));
-    // The value axis must cover the whiskers, not just the bars.
-    const ext = [0];
+    // The value axis covers the bars and, within limits, the whiskers (see ciRange).
+    const vals = [], los = [], his = [];
     for (const s of o.series) {
-      s.values.forEach((v) => { if (v != null) ext.push(v); });
-      (s.errors || []).forEach((e) => { if (e) ext.push(e[0], e[1]); });
+      s.values.forEach((v) => vals.push(v));
+      (s.errors || []).forEach((e) => { if (e) { los.push(e[0]); his.push(e[1]); } });
     }
-    const lo = Math.min(...ext), hi = Math.max(...ext), pad = (hi - lo) * 0.05;
+    const range = ciRange(vals, los, his);
     const cfg = {
       type: 'bar',
       data: {
@@ -373,9 +386,9 @@ window.AID = window.AID || {};
         scales: {
           x: Object.assign(axisCommon(t), { grid: { display: false }, border: { display: false }, ticks: { color: t.text2, font: { weight: '500' } } }),
           y: Object.assign(axisCommon(t), {
-            beginAtZero: true, suggestedMin: lo < 0 ? lo - pad : 0, suggestedMax: hi + pad,
+            min: range.min, max: range.max,
             grid: { color: (c) => (c.tick && c.tick.value === 0 ? t.axis : t.grid), drawTicks: false },
-            ticks: { color: t.muted, maxTicksLimit: 7, callback: axisFmt },
+            ticks: { color: t.muted, stepSize: range.step, callback: axisFmt },
           }),
         },
         plugins: {
@@ -403,6 +416,7 @@ window.AID = window.AID || {};
     const color = o.color || t.series[0];
     const ptColor = o.post.map((p) => (p ? color : t.muted));
     const fmtY = (v) => Math.round(v * 100) + '%';
+    const range = ciRange(o.values, o.lo, o.hi); // a band past the range is cut at the chart edge
     const cfg = {
       type: 'line',
       data: {
@@ -428,8 +442,8 @@ window.AID = window.AID || {};
           }),
           y: Object.assign(axisCommon(t), {
             grid: { color: (c) => (c.tick && c.tick.value === 0 ? t.axis : t.grid), drawTicks: false },
-            ticks: { color: t.muted, padding: 6, maxTicksLimit: 7, callback: fmtY },
-            grace: '8%', // headroom so the zone labels do not cover the top points
+            min: range.min, max: range.max + range.step, // one extra step of headroom so the zone labels do not cover the top points
+            ticks: { color: t.muted, padding: 6, stepSize: range.step, callback: fmtY },
           }),
         },
         plugins: {

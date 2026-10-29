@@ -134,7 +134,7 @@ window.AID = window.AID || {};
     };
 
     const tierCache = new Map();
-    // Usage tiers from average Cursor active days per month in the after period.
+    // Usage tiers from average active days per month (of the selected AI tool) in the after period.
     const TIER_SHORT = ['Non-adopter', 'Light', 'Medium', 'Heavy'];
     const TIERS = [
       'Non-adopter (<' + NON_ADOPTER_DAYS + ' d/mo)',
@@ -183,8 +183,8 @@ window.AID = window.AID || {};
       const h = tCrit(n - 1) * se;
       base = Math.abs(base);
       Object.assign(res, { diff: md, pct: md / base, lo: (md - h) / base, hi: (md + h) / base, sePct: se / base });
-      // Usage that starts near zero (most Cursor metrics before rollout) makes % change meaningless.
-      res.fromZero = meta.source === 'Cursor' && base < 0.1 * Math.abs(res.after);
+      // Usage that starts near zero (most AI usage metrics before rollout) makes % change meaningless.
+      res.fromZero = !!meta.usage && base < 0.1 * Math.abs(res.after);
       const sig = md - h > 0 || md + h < 0;
       res.sig = sig;
       const good = meta.better === 'down' ? md < 0 : md > 0;
@@ -546,6 +546,8 @@ window.AID = window.AID || {};
       splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, did, didFit, didByGroup, eventStudy, compareCross, groupValues,
       adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,
       beforeWindow: windowOf('before'), afterWindow: windowOf('after'),
+      // Shown when the split leaves no months before it (e.g. the selected AI tool was in use from the first month).
+      noBeforeText: windowOf('before') ? null : 'No months before the split: ' + AID.tool.label + ' was in use from the first month of the data. Set the rollout month in Settings, or use the per-developer split.',
     };
   }
 

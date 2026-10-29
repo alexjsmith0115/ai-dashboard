@@ -4,8 +4,8 @@ window.AID = window.AID || {};
 (function (AID) {
   'use strict';
 
-  const DEV_FIELDS = ['devId', 'squadId', 'email', 'name', 'orgLeader', 'orgName', 'department', 'manager', 'role', 'jobLevel', 'isIC', 'cursorUserId', 'jiraAccountId', 'githubLogin', 'primaryProject', 'primaryRepo'];
-  const MET_FIELDS = ['devId', 'month', 'spendDollars', 'contractTotalSpend', 'activeDays', 'totalRequests', 'composerRequests', 'agentRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages', 'totalLinesAdded', 'acceptedLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts', 'totalRejects', 'primaryModel', 'storyPoints', 'throughput', 'thoughputWithSubtasks', 'storiesdone', 'bugsDone', 'tasksDone', 'subtasksDone', 'medianCycleDays', 'meanCycleDays', 'reopenedTickets', 'reopenRatePct', 'prsOpened', 'prsMerged', 'additions', 'deletions', 'changedFiles', 'medianTimeToMergeHours', 'jiraLinkedPrs'];
+  const DEV_FIELDS = ['devId', 'squadId', 'email', 'name', 'orgLeader', 'orgName', 'department', 'manager', 'role', 'jobLevel', 'isIC', 'cursorUserId', 'jiraAccountId', 'githubLogin', 'primaryProject', 'primaryRepo', 'copilotUserId', 'copilotTotalSpend'];
+  const MET_FIELDS = ['devId', 'month', 'spendDollars', 'contractTotalSpend', 'activeDays', 'totalRequests', 'composerRequests', 'agentRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages', 'totalLinesAdded', 'acceptedLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts', 'totalRejects', 'primaryModel', 'storyPoints', 'throughput', 'thoughputWithSubtasks', 'storiesdone', 'bugsDone', 'tasksDone', 'subtasksDone', 'medianCycleDays', 'meanCycleDays', 'reopenedTickets', 'reopenRatePct', 'prsOpened', 'prsMerged', 'additions', 'deletions', 'changedFiles', 'medianTimeToMergeHours', 'jiraLinkedPrs', 'copilotSpendDollars', 'copilotContractTotalSpend', 'copilotActiveDays', 'copilotTotalRequests', 'copilotAgentRequests', 'copilotChatRequests', 'copilotTotalLinesAdded', 'copilotAcceptedLinesAdded', 'copilotTotalLinesDeleted', 'copilotAcceptedLinesDeleted', 'copilotTotalTabsShown', 'copilotTotalTabsAccepted', 'copilotTotalApplies', 'copilotTotalAccepts', 'copilotPrimaryModel'];
 
   const ORGS = [
     { name: 'Commerce', leader: 'Dana Whitfield', effect: 0.24, speed: 0.33,
@@ -23,6 +23,7 @@ window.AID = window.AID || {};
   const N_MONTHS = 24;
   const PILOT = 4;   // month offset of the pilot (Feb 2025)
   const ROLLOUT = 6; // month offset of the company-wide rollout (Apr 2025)
+  const CP_AGENT = 6; // month offset when Copilot agent mode became available (Apr 2025)
 
   function mulberry32(a) {
     return function () {
@@ -46,6 +47,11 @@ window.AID = window.AID || {};
       return k - 1;
     };
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    // Copilot values use their own random stream, so the Cursor, Jira, and GitHub values stay the same as before.
+    const crnd = mulberry32((seed || 20251026) ^ 0x5eed);
+    const cri = (a, b) => a + Math.floor(crnd() * (b - a + 1));
+    const cpick = (arr) => arr[Math.floor(crnd() * arr.length)];
+    const cnormal = () => { let u = 0, v = 0; while (!u) u = crnd(); while (!v) v = crnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
     const r1 = (v) => Math.round(v * 10) / 10;
     const monthKey = (off) => { const i = START.y * 12 + START.m - 1 + off; return Math.floor(i / 12) + '-' + String((i % 12) + 1).padStart(2, '0'); };
     const calMonth = (off) => (START.m - 1 + off) % 12; // 0 = Jan
@@ -81,8 +87,9 @@ window.AID = window.AID || {};
               manager: mem.ic ? manager : director, role: mem.ic ? 'Software Engineer' : 'Engineering Manager', jobLevel: mem.lv,
               isIC: mem.ic ? 'true' : 'false', cursorUserId: 'cu_' + id.toLowerCase(), jiraAccountId: '5f' + (devNum * 7919).toString(16),
               githubLogin: handle.replace(/\./g, '-'), primaryProject: domain.replace(/[^A-Za-z]/g, '').slice(0, 5).toUpperCase(), primaryRepo: repo,
+              copilotUserId: '', copilotTotalSpend: '',
             });
-            people.push({ id, org, lv: mem.lv, ic: mem.ic, teamEffect });
+            people.push({ id, org, lv: mem.lv, ic: mem.ic, teamEffect, dev: devRows[devRows.length - 1] });
           }
         }
       }
@@ -105,6 +112,12 @@ window.AID = window.AID || {};
       const startM = rnd() < 0.15 ? ri(3, 18) : 0; // ~15% are new hires during the window
       const endM = rnd() < 0.05 ? ri(12, N_MONTHS - 2) : N_MONTHS - 1;
       const quality = p.org.name === 'Customer Experience' ? 1 : -0.4;
+      // Copilot: some developers already have a seat. Most use it less after they adopt Cursor, and half lose the seat.
+      const cpSeat = crnd() < (never ? 0.6 : 0.35);
+      const cpStart = cpSeat ? (crnd() < 0.7 ? 0 : cri(1, ROLLOUT)) : Infinity;
+      const cpDrop = crnd() < 0.5 ? cri(2, 6) : Infinity; // months after Cursor adoption when the seat is removed
+      const cpPropensity = Math.pow(crnd(), 0.8);
+      let cpSpendTotal = 0;
       for (let m = startM; m <= endM; m++) {
         const cm = calMonth(m);
         const season = cm === 11 ? 0.74 : cm === 6 || cm === 7 ? 0.92 : 1;
@@ -154,6 +167,27 @@ window.AID = window.AID || {};
           else model = pick(['claude-4.5-sonnet', 'claude-4.5-sonnet', 'gpt-5', 'claude-4.5-opus', 'auto', 'gemini-2.5-pro']);
         }
 
+        // Copilot usage
+        const cpActive = m >= cpStart && since < cpDrop;
+        const cpFade = since >= 0 ? Math.max(0.15, 1 - 0.2 * (since + 1)) : 1;
+        const cpDays = cpActive ? clamp(Math.round(2 + 16 * cpPropensity * cpFade * season + 2 * cnormal()), 0, 22) : 0;
+        const cpReq = cpDays ? Math.round(cpDays * (3 + 8 * cpPropensity) * Math.exp(0.2 * cnormal())) : 0;
+        const cpAgent = m >= CP_AGENT ? Math.round(cpReq * clamp(0.05 + 0.03 * (m - CP_AGENT), 0.05, 0.5)) : 0;
+        const cpChat = cpReq - cpAgent;
+        const cpTabsShown = cpDays * cri(80, 160);
+        const cpTabsAcc = Math.round(cpTabsShown * clamp(0.25 + 0.1 * cpPropensity + 0.03 * cnormal(), 0.1, 0.5));
+        const cpApplies = Math.round((cpAgent + cpChat * 0.3) * 0.8), cpAccepts = Math.round(cpApplies * (0.55 + 0.15 * crnd()));
+        const cpLinesAdded = Math.round(cpTabsAcc * 1.4 + cpAgent * 25 + cpChat * 4);
+        const cpAcceptedLines = Math.round(cpLinesAdded * (0.5 + 0.15 * crnd()));
+        const cpSpend = cpActive ? 19 + cpAgent * 0.04 : 0; // seat + premium requests
+        cpSpendTotal += cpSpend;
+        let cpModel = '';
+        if (cpDays) {
+          if (m < 8) cpModel = cpick(['gpt-4o', 'gpt-4o', 'claude-3.5-sonnet']);
+          else if (m < 14) cpModel = cpick(['gpt-4.1', 'gpt-4.1', 'claude-sonnet-4', 'gemini-2.5-pro']);
+          else cpModel = cpick(['gpt-5', 'claude-sonnet-4.5', 'claude-sonnet-4.5', 'gpt-5-mini', 'auto']);
+        }
+
         metRows.push({
           devId: p.id, month: monthKey(m), spendDollars: spend.toFixed(2), contractTotalSpend: '', activeDays, totalRequests: req,
           composerRequests: composer, agentRequests: agent, chatRequests: chat, cmdkUsages: cmdk, bugbotUsages: bugbot,
@@ -164,13 +198,27 @@ window.AID = window.AID || {};
           reopenedTickets: reopenRate === '' ? 0 : Math.round((throughput * reopenRate) / 100), reopenRatePct: reopenRate,
           prsOpened, prsMerged, additions, deletions: Math.round(additions * (0.3 + 0.2 * rnd())), changedFiles: Math.round(prsMerged * (4 + 4 * rnd())),
           medianTimeToMergeHours: ttm, jiraLinkedPrs: Math.round(prsMerged * (0.7 + 0.25 * rnd())),
+          copilotSpendDollars: cpSpend.toFixed(2), copilotContractTotalSpend: '', copilotActiveDays: cpDays, copilotTotalRequests: cpReq,
+          copilotAgentRequests: cpAgent, copilotChatRequests: cpChat, copilotTotalLinesAdded: cpLinesAdded, copilotAcceptedLinesAdded: cpAcceptedLines,
+          copilotTotalLinesDeleted: Math.round(cpLinesAdded * 0.35), copilotAcceptedLinesDeleted: Math.round(cpAcceptedLines * 0.3),
+          copilotTotalTabsShown: cpTabsShown, copilotTotalTabsAccepted: cpTabsAcc, copilotTotalApplies: cpApplies, copilotTotalAccepts: cpAccepts, copilotPrimaryModel: cpModel,
         });
+      }
+      if (cpSpendTotal > 0) {
+        p.dev.copilotUserId = 'cp_' + p.id.toLowerCase();
+        p.dev.copilotTotalSpend = cpSpendTotal.toFixed(2);
       }
     }
     // contractTotalSpend: company-wide spend for the month, repeated on each row (as an aggregate field usually is).
-    const byMonth = {};
-    for (const r of metRows) byMonth[r.month] = (byMonth[r.month] || 0) + Number(r.spendDollars);
-    for (const r of metRows) r.contractTotalSpend = byMonth[r.month].toFixed(2);
+    const byMonth = {}, cpByMonth = {};
+    for (const r of metRows) {
+      byMonth[r.month] = (byMonth[r.month] || 0) + Number(r.spendDollars);
+      cpByMonth[r.month] = (cpByMonth[r.month] || 0) + Number(r.copilotSpendDollars);
+    }
+    for (const r of metRows) {
+      r.contractTotalSpend = byMonth[r.month].toFixed(2);
+      r.copilotContractTotalSpend = cpByMonth[r.month].toFixed(2);
+    }
 
     return {
       dev: { fields: DEV_FIELDS, rows: devRows },

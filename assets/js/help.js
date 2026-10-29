@@ -15,7 +15,7 @@ window.AID = window.AID || {};
       how: [
         'Each row of developer_monthly_metrics.csv is one developer in one month. The dashboard matches it to developers.csv by devId (or email, cursorUserId, jiraAccountId, githubLogin).',
         'The month column can be in many formats (2025-03, 3/1/2025, Mar 2025). The dashboard converts all of them to one calendar month.',
-        'A blank Cursor usage cell counts as 0, because no usage means zero. A blank Jira or GitHub cell counts as missing, not 0. Missing values are left out of averages.',
+        'A blank AI usage cell (Cursor or Copilot) counts as 0, because no usage means zero. A blank Jira or GitHub cell counts as missing, not 0. Missing values are left out of averages.',
         'Derived metrics (tab acceptance rate, AI acceptance rate, AI share of added lines, spend per merged PR) are calculated for each developer-month from the raw columns.',
         'Most results are an average per developer per month. For a group, the dashboard first averages each developer\'s months, then averages the developers. Thus each developer has the same weight, whatever their number of months.',
       ],
@@ -23,10 +23,29 @@ window.AID = window.AID || {};
       watch: ['Rows that do not match a developer, rows with a bad month, and duplicate rows are listed under "Data notes" after you load the files.'],
     },
     {
+      id: 'm-tools', title: 'AI tool: Cursor, Copilot, or both',
+      short: 'The AI tool switch in the filter bar sets where every AI usage metric comes from: Cursor, Copilot, or both tools together. The current tool is {tool}.',
+      how: [
+        'Cursor uses the plain columns (activeDays, totalRequests, …). Copilot uses the columns that start with copilot (copilotActiveDays, copilotTotalRequests, …).',
+        'Cursor + Copilot adds the two tools together for requests, lines, tabs, and spend.',
+        'Cursor + Copilot active days = the higher of the two. The data has no daily detail, and a developer can use both tools on the same day.',
+        'Composer, Cmd+K, and Bugbot are Cursor features. The Copilot view does not show them. The combined view uses the Cursor values.',
+        'Copilot has no rejects column. For the AI acceptance rate, Copilot rejects = copilotTotalApplies − copilotTotalAccepts.',
+        'In the combined view, the primary model of a month is the model of the tool with more active days.',
+        'The adoption month, the usage tiers, and the AI effect all use the active days of the selected tool. Jira and GitHub metrics do not change.',
+      ],
+      read: ['Compare the AI effect in the three views. A clear effect for one tool and none for the other means the two tools do not change output in the same way.'],
+      watch: [
+        'A developer who used the tool from the first month of the data has no months before adoption. That developer cannot add to the AI effect. This is common for Copilot, and for the combined view when Copilot came before Cursor.',
+        'Developers who moved from Copilot to Cursor show a drop in Copilot use. That drop is a change of tool, not less AI use. Use the combined view to see total AI use.',
+      ],
+      see: ['m-adoption', 'm-tiers'],
+    },
+    {
       id: 'm-onboarding', title: 'New hires and onboarding',
       short: 'A new hire\'s first {onboard} months are left out of every result, because output is low while people learn the codebase.',
       how: [
-        'A developer\'s start month is their first month with any work: PRs, Jira issues, story points, GitHub additions, or Cursor active days.',
+        'A developer\'s start month is their first month with any work: PRs, Jira issues, story points, GitHub additions, or {tool} active days.',
         'A new hire is a developer whose start month comes after the first month in the data. Developers who already worked in the first month count as existing staff.',
         'The first {onboard} months after a new hire\'s start month are left out of every chart, table, and statistic. You can change this number in Settings.',
       ],
@@ -38,22 +57,22 @@ window.AID = window.AID || {};
     },
     {
       id: 'm-adoption', title: 'Adoption month and adoption rate',
-      short: 'A developer adopts AI in their first month with {thr}+ Cursor active days. The adoption rate is the share of developers (or months) at that level.',
+      short: 'A developer adopts AI in their first month with {thr}+ {tool} active days. The adoption rate is the share of developers (or months) at that level.',
       how: [
-        'Adoption month = the first month (after onboarding) with {thr} or more Cursor active days. You can change {thr} in Settings (Active threshold).',
+        'Adoption month = the first month (after onboarding) with {thr} or more {tool} active days. You can change {thr} in Settings (Active threshold).',
         'A developer who never reaches {thr} active days in one month is a non-adopter.',
         'The adoption month always comes from the full data, not only from the From–To range. Otherwise a developer who adopted before From would look as if they adopted in the From month.',
         'AI adoption over time = share of developers with {thr}+ active days in each month. Heavy = share with {hi}+ active days.',
         'Adoption % for a group = share of that group\'s after-period developer-months with {thr}+ active days.',
       ],
       read: ['A high adoption rate with a small AI effect means people use the tool, but it does not (yet) change their output.'],
-      watch: ['One month at {thr}+ days is enough to count as adopted. A developer who tried Cursor once and stopped is still an adopter. The usage tier shows how much they kept using it.'],
+      watch: ['One month at {thr}+ days is enough to count as adopted. A developer who tried {toolAny} once and stopped is still an adopter. The usage tier shows how much they kept using it.'],
     },
     {
       id: 'm-tiers', title: 'AI usage tiers',
-      short: 'Each developer gets one usage tier from their average Cursor active days per month after adoption (or after the rollout month).',
+      short: 'Each developer gets one usage tier from their average {tool} active days per month after adoption (or after the rollout month).',
       how: [
-        'Usage = the average Cursor active days per month in the developer\'s after period.',
+        'Usage = the average {tool} active days per month in the developer\'s after period.',
         'Non-adopter: under 1 day per month. Light: 1 to {thrMinus}. Medium: {thr} to {hiMinus}. Heavy: {hi}+.',
         'The Medium and Heavy thresholds are in Settings (Active threshold and Heavy-usage threshold).',
       ],
@@ -132,7 +151,7 @@ window.AID = window.AID || {};
       ],
       read: [
         'Each developer is compared with themselves, so differences in skill and level do not affect the result.',
-        '"from ~0" for a Cursor metric means usage started near zero. A % change from zero means nothing.',
+        '"from ~0" for an AI usage metric means usage started near zero. A % change from zero means nothing.',
       ],
       watch: [
         'Everything that changed over time counts as part of the change: seasonality, process changes, re-orgs, company growth. Use the AI effect on the Executive summary for a fair estimate.',
@@ -235,7 +254,7 @@ window.AID = window.AID || {};
       how: [
         'Productivity tiles (PRs merged to reopen rate): the AI effect, with actual vs expected below it.',
         'AI adoption: the share of developer-months with {thr}+ active days, after the split minus before the split, in percentage points.',
-        'Cursor spend: the average per-developer change in monthly spend, before vs after. Cost per merged PR = spend ÷ PRs merged in the after period.',
+        '{tool} spend: the average per-developer change in monthly spend, before vs after. Cost per merged PR = spend ÷ PRs merged in the after period.',
         'The sparkline is the monthly average per developer. The vertical line is the company rollout month.',
       ],
       read: ['Green = improved, red = worse. A plain number = no clear change. Hover over a tile for its 95% CI.'],
@@ -255,9 +274,9 @@ window.AID = window.AID || {};
     },
     {
       id: 'c-adoption', title: 'AI adoption over time', area: 'Executive summary',
-      short: 'The share of developers who used Cursor at least {thr} days (active) and at least {hi} days (heavy) in each month.',
+      short: 'The share of developers who used {toolAny} at least {thr} days (active) and at least {hi} days (heavy) in each month.',
       how: [
-        'For each month: developers with {thr}+ Cursor active days ÷ all developers with data that month. The same for {hi}+ days.',
+        'For each month: developers with {thr}+ {tool} active days ÷ all developers with data that month. The same for {hi}+ days.',
         'New hires\' onboarding months are left out.',
         'The vertical line is the company rollout month.',
       ],
@@ -345,7 +364,7 @@ window.AID = window.AID || {};
       id: 'c-allmetrics', title: 'Before vs after AI, every metric', area: 'Explore',
       short: 'The before/after change for every metric, with its 95% CI and status.',
       how: ['Uses the before/after method: each developer\'s after average minus their own before average, averaged over developers.'],
-      read: ['"Better when" gives the direction. "from ~0" means a Cursor metric started near zero, so a % change means nothing.'],
+      read: ['"Better when" gives the direction. "from ~0" means an AI usage metric started near zero, so a % change means nothing.'],
       watch: ['These are before/after changes, not the AI effect. They include seasonality and company-wide changes.'],
       see: ['m-beforeafter', 'm-ci'],
     },
@@ -382,9 +401,9 @@ window.AID = window.AID || {};
     },
     {
       id: 'c-dose', title: 'Productivity by monthly AI usage', area: 'Explore',
-      short: 'The average of an outcome metric for developer-months with 0, 1–4, 5–9, 10–14, and 15+ Cursor active days.',
+      short: 'The average of an outcome metric for developer-months with 0, 1–4, 5–9, 10–14, and 15+ {tool} active days.',
       how: [
-        'Each developer-month goes into one bucket by its Cursor active days. Each bar is the average of the metric in that bucket.',
+        'Each developer-month goes into one bucket by its {tool} active days. Each bar is the average of the metric in that bucket.',
         'After only: uses only after-period months, so calendar trends mix in less.',
       ],
       read: ['A rising pattern means months with more AI use have more output.'],
@@ -394,14 +413,14 @@ window.AID = window.AID || {};
       ],
     },
     {
-      id: 'c-mix', title: 'How developers use Cursor', area: 'Explore',
-      short: 'Cursor AI requests by feature (agent, composer, chat, Cmd+K, Bugbot), per month.',
+      id: 'c-mix', title: 'How developers use the AI tool', area: 'Explore',
+      short: '{tool} AI requests by feature, per month. Cursor has agent, composer, chat, Cmd+K, and Bugbot. Copilot has agent and chat.',
       how: ['Share: each feature\'s requests ÷ all requests in the month. Per dev: average requests per developer per month.'],
       read: ['A growing agent share means developers hand over larger tasks to AI.'],
     },
     {
       id: 'c-usagedist', title: 'How much each developer uses AI', area: 'Explore',
-      short: 'The number of developers at each level of average Cursor active days per month.',
+      short: 'The number of developers at each level of average {tool} active days per month.',
       how: ['Each developer is counted once, by their average active days per month in the after period. Color = usage tier.'],
       read: ['A tall bar at <1 means many non-adopters. A spread to the right means many heavy users.'],
       see: ['m-tiers'],
@@ -409,7 +428,10 @@ window.AID = window.AID || {};
     {
       id: 'c-model', title: 'Primary model', area: 'Explore',
       short: 'The share of active developer-months by the AI model used most in that month.',
-      how: ['Counts the primaryModel value of each developer-month. The top 7 models are shown, the rest are "Other".'],
+      how: [
+        'Counts the primaryModel value (copilotPrimaryModel for Copilot) of each developer-month. The top 7 models are shown, the rest are "Other".',
+        'Cursor + Copilot: each month counts the model of the tool with more active days.',
+      ],
       read: ['Shows how fast developers move to new models.'],
     },
     {
@@ -428,7 +450,7 @@ window.AID = window.AID || {};
   const METRIC_NOTES = {
     activeDays: 'The main measure of AI use. It drives the adoption month and the usage tiers.',
     totalRequests: 'The volume of AI use. It depends on how people work: one agent request can do as much as many chat requests.',
-    agentRequests: 'Requests to the Cursor agent, which can edit many files. A growing share means larger tasks go to AI.',
+    agentRequests: 'Requests to the AI agent (Cursor agent or Copilot agent mode), which can edit many files. A growing share means larger tasks go to AI.',
     composerRequests: 'Requests to Composer, the multi-file editing mode.',
     chatRequests: 'Questions to the AI chat.',
     cmdkUsages: 'Inline edits with Cmd+K.',
@@ -438,7 +460,7 @@ window.AID = window.AID || {};
     tabAcceptRate: 'A high rate means the suggestions fit the code well.',
     aiAcceptRate: 'The share of applied AI edits that developers kept. A falling rate can mean the AI is used for harder tasks.',
     aiLineShare: 'A rough signal of how much of the new code comes from AI. Capped at 100%.',
-    spendDollars: 'Cursor cost. Use it with cost per merged PR to judge value.',
+    spendDollars: '{tool} cost. Use it with cost per merged PR to judge value.',
     throughput: 'Depends on how teams split work into issues. Compare it within a team or developer over time (the AI effect does this), not between teams.',
     thoughputWithSubtasks: 'Like throughput, but subtasks count too. Teams that split work into many subtasks get higher numbers.',
     storyPoints: 'Story points are team-relative estimates. Compare them within a team or developer over time, not between teams. Watch for estimate inflation.',
@@ -457,15 +479,15 @@ window.AID = window.AID || {};
     changedFiles: 'Files changed in merged PRs. No better direction.',
     medianTimeToMergeHours: 'Lower is better. A rise after AI adoption often means more PRs wait for review: the bottleneck moves to reviewers.',
     jiraLinkedPrs: 'PRs linked to a Jira issue. Shows how well work is tracked.',
-    costPerMergedPr: 'Lower is better. Cursor spend ÷ PRs merged, for months with at least one merged PR.',
+    costPerMergedPr: 'Lower is better. {tool} spend ÷ PRs merged, for months with at least one merged PR.',
   };
   const KPI_EXTRA = {
     'kpi-adoption': {
-      title: 'AI adoption tile', short: 'The share of developer-months with {thr}+ Cursor active days, after the split minus before the split.',
+      title: 'AI adoption tile', short: 'The share of developer-months with {thr}+ {tool} active days, after the split minus before the split.',
       how: ['Before and after are split by the setting Before / after split. The value below gives the before and after shares.'], see: ['m-adoption'],
     },
     'kpi-spend': {
-      title: 'Cursor spend tile', short: 'The average change in Cursor spend per developer per month, before vs after the split.',
+      title: 'AI spend tile', short: 'The average change in {tool} spend per developer per month, before vs after the split.',
       how: ['Each developer\'s after average minus their before average, averaged over developers. Cost per merged PR = spend ÷ PRs merged, after period.'], see: ['m-beforeafter'],
     },
   };
@@ -479,13 +501,29 @@ window.AID = window.AID || {};
       id: 'metric:' + key, title: m.label, area: m.source + ' metric',
       short: (m.desc ? m.desc + ' ' : '') + better,
       how: [
-        m.derived ? 'Calculated for each developer-month: ' + (m.desc || '') : 'Column ' + key + ' in developer_monthly_metrics.csv, one value per developer per month.',
+        m.derived ? 'Calculated for each developer-month: ' + (m.desc || '') : columnText(key),
         blank, 'Unit: ' + ({ count: 'count per month', days: 'days', hours: 'hours', pct: 'percent', usd: 'US dollars' }[m.unit] || m.unit) + '.',
         AID.KEY_PRODUCTIVITY.includes(key) || key === AID.QUALITY_GUARDRAIL ? 'On the Executive summary, this metric shows the AI effect (actual vs expected without AI).' : null,
       ].filter(Boolean),
       read: METRIC_NOTES[key] ? [METRIC_NOTES[key]] : [],
       see: AID.KEY_PRODUCTIVITY.includes(key) || key === AID.QUALITY_GUARDRAIL ? ['m-did'] : [],
     };
+  }
+
+  // Where a raw metric comes from, for the selected AI tool.
+  function columnText(key) {
+    const m = AID.M[key], tool = AID.tool.key, cp = AID.COPILOT_KEYS.includes(key) ? AID.copilotKey(key) : null;
+    const end = ' in developer_monthly_metrics.csv, one value per developer per month.';
+    if (!m.usage || tool === 'cursor' || (tool === 'both' && !cp)) return 'Column ' + key + end;
+    if (tool === 'copilot') return cp ? 'Column ' + cp + end : 'Cursor only. Copilot has no matching column.';
+    return 'Columns ' + key + ' and ' + cp + end + (key === 'activeDays' ? ' The higher of the two is used.' : ' The two are added together.');
+  }
+  function columnCell(key) {
+    const m = AID.M[key];
+    if (m.derived || !m.usage || AID.tool.key === 'cursor') return key;
+    const cp = AID.COPILOT_KEYS.includes(key) ? AID.copilotKey(key) : null;
+    if (AID.tool.key === 'copilot') return cp || '—';
+    return cp ? key + ' + ' + cp : key;
   }
 
   const TOPICS = new Map();
@@ -499,6 +537,7 @@ window.AID = window.AID || {};
     const s = (AID.app && AID.app.state && AID.app.state.settings) || {};
     const thr = s.activeDays || 5, hi = s.highDays || 12;
     return {
+      tool: AID.tool.label, toolAny: AID.tool.any,
       thr, hi, thrMinus: thr - 1, hiMinus: hi - 1, onboard: s.onboard ?? 3, minGroup: s.minGroup || 5, ramp: s.ramp || 0,
       minCtrl: AID.analysis.MIN_CONTROL_DEVS, minMonths: AID.analysis.MIN_MONTHS_PER_SIDE,
     };
@@ -605,7 +644,7 @@ window.AID = window.AID || {};
       { id: 'g-methods', title: 'Methods', topics: METHODS.map((t) => t.id) },
       { id: 'g-exec', title: 'Executive summary charts', topics: CHARTS.filter((t) => t.area === 'Executive summary').map((t) => t.id).concat(Object.keys(KPI_EXTRA)) },
       { id: 'g-explore', title: 'Explore charts', topics: CHARTS.filter((t) => t.area === 'Explore').map((t) => t.id) },
-      { id: 'g-metrics', title: 'Metric reference', topics: AID.METRICS.map((m) => 'metric:' + m.key) },
+      { id: 'g-metrics', title: 'Metric reference', topics: AID.METRICS.filter((m) => AID.available(m.key)).map((m) => 'metric:' + m.key) },
     ];
 
     const toc = el('nav.guide-toc', { 'aria-label': 'Guide contents' },
@@ -654,9 +693,9 @@ window.AID = window.AID || {};
   }
 
   function metricTable() {
-    const rows = AID.METRICS.map((m) => el('tr',
+    const rows = AID.METRICS.filter((m) => AID.available(m.key)).map((m) => el('tr',
       el('td', el('a', { href: '#' + anchor('metric:' + m.key), text: m.label, onclick: jump(anchor('metric:' + m.key)) })),
-      el('td', el('code', { text: m.key })),
+      el('td', el('code', { text: columnCell(m.key) })),
       el('td', { text: m.source }),
       el('td', { text: m.derived ? 'Derived' : m.empty === 'zero' ? 'Blank = 0' : 'Blank = missing' }),
       el('td', { text: { up: 'Higher', down: 'Lower', neutral: '—' }[m.better] })));

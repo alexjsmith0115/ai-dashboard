@@ -1,1 +1,1 @@
-devId, squadId, email, name, orgLeader, orgName, department, manager, role, jobLevel, isIC, cursorUserId, jiraAccountId, githubLogin, primaryProject, primaryRepo
+devId, squadId, email, name, orgLeader, orgName, department, manager, role, jobLevel, isIC, cursorUserId, jiraAccountId, githubLogin, primaryProject, primaryRepo, copilotUserId, copilotTotalSpend

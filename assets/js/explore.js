@@ -84,15 +84,15 @@ window.AID = window.AID || {};
 
   // ---------------- Before / after for every metric ----------------
   function allMetricsCard(ctx) {
-    // Outcomes (GitHub, Jira) first, then Cursor usage.
-    const order = { GitHub: 0, Jira: 1, Cursor: 2 };
-    const rows = AID.METRICS.slice().sort((a, b) => order[a.source] - order[b.source])
+    // Outcomes (GitHub, Jira) first, then AI usage.
+    const order = (m) => (m.usage ? 2 : m.source === 'Jira' ? 1 : 0);
+    const rows = AID.METRICS.filter((m) => AID.available(m.key)).sort((a, b) => order(a) - order(b))
       .map((m) => Object.assign(ctx.compare(m.key), { meta: m })).filter((r) => r.status !== 'nodata');
     return el('section.card',
       el('div.card-head', el('div',
         titleRow('Before vs after AI, every metric', 'c-allmetrics'),
         el('p.sub', { text: 'Average per developer per month. Each developer is compared with their own baseline. Status is "Improved" or "Worse" only when the 95% confidence interval excludes zero.' }))),
-      table([
+      !rows.length ? el('p.empty-note', { text: ctx.noBeforeText || 'Not enough developers with months before and after the split.' }) : table([
         { label: 'Source', value: (r) => r.meta.source },
         { label: 'Metric', value: (r) => r.meta.label },
         { label: 'Better when', value: (r) => ({ up: 'Higher', down: 'Lower', neutral: '—' }[r.meta.better]) },
@@ -229,7 +229,7 @@ window.AID = window.AID || {};
     const tb = el('tbody');
     for (const g of groups) {
       const tr = el('tr', el('th.row', { scope: 'row', text: g }), el('td', { style: { color: 'var(--text-2)' }, text: String(head[g].n) }),
-        el('td', { style: { color: 'var(--text-2)' }, title: 'Share of after-period months with ' + ctx.thr + '+ Cursor active days', text: head[g].adoption == null ? '·' : Math.round(head[g].adoption * 100) + '%' }));
+        el('td', { style: { color: 'var(--text-2)' }, title: 'Share of after-period months with ' + ctx.thr + '+ ' + AID.M.activeDays.label, text: head[g].adoption == null ? '·' : Math.round(head[g].adoption * 100) + '%' }));
       HEAT_METRICS.forEach((k, i) => {
         const r = look[i][g];
         const neutral = AID.M[k].better === 'neutral';
@@ -256,7 +256,7 @@ window.AID = window.AID || {};
     const c = card({
       id: 'x-dose', height: 280, help: 'c-dose',
       title: meta.short + ' by monthly AI usage',
-      sub: 'Average per developer-month, grouped by Cursor active days that month.' + (st.doseAfter ? ' After-period months only, so calendar trends do not mix in.' : ''),
+      sub: 'Average per developer-month, grouped by ' + AID.M.activeDays.label + ' that month.' + (st.doseAfter ? ' After-period months only, so calendar trends do not mix in.' : ''),
       controls: [
         select('Metric', AID.ui.metricOptions(AID.OUTCOME_METRICS, true), st.doseMetric, (v) => set({ doseMetric: v })),
         seg('Period', [{ value: true, label: 'After only' }, { value: false, label: 'All months' }], st.doseAfter, (v) => set({ doseAfter: v })),
@@ -269,7 +269,7 @@ window.AID = window.AID || {};
       valueFmt: (v) => F.metric(v, st.doseMetric, { short: true }),
       tooltipLines: (i) => [d[i].n.toLocaleString() + ' developer-months · ' + d[i].devs + ' developers', 'Median ' + F.metric(d[i].median, st.doseMetric, { short: true })],
     }));
-    c.foot.textContent = 'X axis: Cursor active days in the month.';
+    c.foot.textContent = 'X axis: ' + AID.M.activeDays.label + ' in the month.';
     c.setTable(() => table([
       { label: 'Active days', value: (r) => r.label, sortable: false }, { label: 'Dev-months', num: true, value: (r) => r.n },
       { label: 'Developers', num: true, value: (r) => r.devs },
@@ -279,17 +279,17 @@ window.AID = window.AID || {};
     return c.el;
   }
 
-  // ---------------- Cursor feature mix ----------------
+  // ---------------- AI feature mix ----------------
   function mixCard(ctx, st, set, t) {
-    const keys = ['agentRequests', 'composerRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages'];
+    const keys = ['agentRequests', 'composerRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages'].filter(AID.available);
     const share = st.mixMode === 'share';
     const c = card({
-      id: 'x-mix', height: 280, help: 'c-mix', title: 'How developers use Cursor',
+      id: 'x-mix', height: 280, help: 'c-mix', title: 'How developers use ' + AID.tool.label,
       sub: share ? 'Share of all AI requests by feature, per month.' : 'Average requests per developer per month, by feature.',
       controls: [seg('Mode', [{ value: 'share', label: 'Share' }, { value: 'abs', label: 'Per dev' }], st.mixMode, (v) => set({ mixMode: v }))],
     });
     const per = keys.map((k) => ctx.series(k, { agg: share ? 'sum' : 'mean' }).series[0]);
-    if (!per[0]) { c.empty('No Cursor data in range.'); return c.el; }
+    if (!per[0]) { c.empty('No ' + AID.tool.label + ' data in range.'); return c.el; }
     const labels = ctx.months.map((m) => AID.data.monthLabel(m));
     const totals = labels.map((_, i) => per.reduce((s, x) => s + ((x && x.values[i]) || 0), 0));
     const series = keys.map((k, i) => ({
@@ -305,7 +305,7 @@ window.AID = window.AID || {};
 
   // ---------------- Usage distribution ----------------
   function usageDistCard(ctx, t) {
-    const c = card({ id: 'x-dist', height: 260, help: 'c-usagedist', title: 'How much each developer uses AI', sub: 'Developers by average Cursor active days per month in the after period.' });
+    const c = card({ id: 'x-dist', height: 260, help: 'c-usagedist', title: 'How much each developer uses AI', sub: 'Developers by average ' + AID.M.activeDays.label + ' per month in the after period.' });
     const bins = [];
     // One-day bins, so bin edges line up with the tier thresholds.
     for (let i = 0; i <= 22; i++) bins.push({ lo: i, hi: i + 1, label: i ? String(i) : '<1', n: 0 });
@@ -328,7 +328,7 @@ window.AID = window.AID || {};
 
   // ---------------- Model mix ----------------
   function modelCard(ctx, st, set, t) {
-    const c = card({ id: 'x-model', height: 260, help: 'c-model', title: 'Primary model', sub: 'Share of active developer-months by the model used most. Top 7 models; the rest are "Other".' });
+    const c = card({ id: 'x-model', height: 260, help: 'c-model', title: 'Primary model', sub: 'Share of active developer-months by the model used most. Top 7 models; the rest are "Other".' + (AID.tool.key === 'both' ? ' Each month counts the model of the tool with more active days.' : '') });
     const counts = new Map();
     for (const d of ctx.devs) for (const r of ctx.rowsOf(d)) if (r.model) counts.set(r.model, (counts.get(r.model) || 0) + 1);
     if (!counts.size) { c.empty('No primaryModel values in range.'); return c.el; }

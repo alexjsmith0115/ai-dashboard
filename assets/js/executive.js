@@ -8,6 +8,7 @@ window.AID = window.AID || {};
   const HEADLINE_OPTIONS = ['prsMerged', 'throughput', 'storyPoints', 'thoughputWithSubtasks', 'medianCycleDays', 'medianTimeToMergeHours', 'prsOpened'];
   const GROUP_LEVELS = [{ value: 'org', label: 'Org' }, { value: 'domain', label: 'Domain' }, { value: 'team', label: 'Team' }, { value: 'level', label: 'Job level' }];
   const BAR_LIMIT = 20;
+  let stickyObs = null;
 
   function perDevLabel(key) {
     const m = AID.M[key];
@@ -38,9 +39,19 @@ window.AID = window.AID || {};
       return Object.assign(ctx.did(metric, list), { tier, devCount: list.length });
     });
 
-    page.appendChild(el('div.section-head',
+    // The headline metric bar stays under the top bar while the page scrolls. When pinned, it also shows the headline effect.
+    const sentinel = el('div.sticky-sentinel');
+    const bar = el('div.section-head.exec-head',
       el('h2', { text: 'Executive summary' }),
-      el('div', { style: { marginLeft: 'auto' } }, select('Headline metric', AID.ui.metricOptions(HEADLINE_OPTIONS), metric, (v) => app.update({ exec: { metric: v } })))));
+      el('span.exec-head-effect', 'AI effect on ' + meta.label + ': ', el('strong', { text: head.pct != null ? F.pct(head.pct) : '—' })),
+      el('div', { style: { marginLeft: 'auto' } }, select('Headline metric', AID.ui.metricOptions(HEADLINE_OPTIONS), metric, (v) => app.update({ exec: { metric: v } }))));
+    page.append(sentinel, bar);
+    if (stickyObs) stickyObs.disconnect();
+    if (window.IntersectionObserver) {
+      const top = document.getElementById('tabs').closest('.topbar').offsetHeight;
+      stickyObs = new IntersectionObserver(([e]) => bar.classList.toggle('stuck', !e.isIntersecting && e.boundingClientRect.top < top + 1), { rootMargin: -(top + 1) + 'px 0px 0px 0px' });
+      stickyObs.observe(sentinel);
+    }
 
     page.appendChild(verdictCard(ctx, head, keyRes, quality, tiers, metric));
     page.appendChild(kpiGrid(ctx, keyRes, quality));
@@ -100,7 +111,7 @@ window.AID = window.AID || {};
 
     const fit = ctx.didFit(metric);
     left.appendChild(el('p.method-note', {
-      text: 'Method: difference-in-differences. Each adopter is split at their own adoption month (first month with ' + ctx.thr + '+ Cursor active days). ' +
+      text: 'Method: difference-in-differences. Each adopter is split at their own adoption month (first month with ' + ctx.thr + '+ ' + AID.M.activeDays.label + '). ' +
         'Their results after adoption are compared with the value expected from their own level before adoption plus the company-wide change in the same month. ' +
         'The company-wide change comes from ' + controlText(fit) + '. ' +
         head.n + ' adopters have ' + AID.analysis.MIN_MONTHS_PER_SIDE + '+ months on both sides.' +
@@ -127,7 +138,7 @@ window.AID = window.AID || {};
     const right = el('div.verdict-side',
       el('div.card-title', el('p.verdict-q', { text: 'AI effect on ' + meta.short + ' by AI usage level' }), AID.help.button('m-tiers')),
       el('div.scorecard', rows),
-      el('p.method-note', { text: 'Usage level = average Cursor active days per month in the after period.' }),
+      el('p.method-note', { text: 'Usage level = average ' + AID.M.activeDays.label + ' per month in the after period.' }),
       robustness(ctx, metric));
 
     return el('section.card.verdict', left, right);
@@ -173,16 +184,16 @@ window.AID = window.AID || {};
     const adopt = ctx.adoptionSeries();
     const share = phaseShare(ctx, (r) => r.v.activeDays >= ctx.thr);
     const pts = share.b != null && share.a != null ? share.a - share.b : null;
-    grid.appendChild(tile('AI adoption', 'Cursor', pts != null ? signed(Math.round(pts * 100), String) : '—', pts != null ? 'pts' : '', null,
-      [el('span', { text: pts != null ? pct0(share.b) + ' → ' + pct0(share.a) + ' of developers used Cursor ' + ctx.thr + '+ days / mo' : 'Not enough data' })],
+    grid.appendChild(tile('AI adoption', AID.tool.label, pts != null ? signed(Math.round(pts * 100), String) : '—', pts != null ? 'pts' : '', null,
+      [el('span', { text: pts != null ? pct0(share.b) + ' → ' + pct0(share.a) + ' of developers used ' + AID.tool.any + ' ' + ctx.thr + '+ days / mo' : (ctx.noBeforeText ? 'No months before the split. See Settings.' : 'Not enough data') })],
       AID.charts.sparkline(adopt.active, { color: t.series[0], markerIndex: markerIdx, zero: true }), null, 'kpi-adoption'));
 
-    // Spend tile: change in Cursor spend per developer per month.
+    // Spend tile: change in AI tool spend per developer per month.
     const sp = ctx.compare('spendDollars');
     const cppRes = ctx.compare('costPerMergedPr');
     const spend = ctx.series('spendDollars', { agg: 'mean' }).series[0];
-    grid.appendChild(tile('Cursor spend', 'Cursor', sp.diff != null ? signed(sp.diff, (v) => F.value(v, 'usd')) : '—', sp.diff != null ? '/ dev / mo' : '', null,
-      [el('span', { text: sp.diff != null ? F.value(sp.before, 'usd') + ' → ' + F.value(sp.after, 'usd') + ' · ' + F.value(cppRes.after, 'usd') + ' per merged PR' : 'Not enough data' })],
+    grid.appendChild(tile(AID.M.spendDollars.label, AID.tool.label, sp.diff != null ? signed(sp.diff, (v) => F.value(v, 'usd')) : '—', sp.diff != null ? '/ dev / mo' : '', null,
+      [el('span', { text: sp.diff != null ? F.value(sp.before, 'usd') + ' → ' + F.value(sp.after, 'usd') + ' · ' + F.value(cppRes.after, 'usd') + ' per merged PR' : (ctx.noBeforeText ? 'No months before the split. See Settings.' : 'Not enough data') })],
       spend ? AID.charts.sparkline(spend.values, { markerIndex: markerIdx, zero: true }) : null, null, 'kpi-spend'));
 
     for (const c of keyRes.concat([quality])) {
@@ -281,7 +292,7 @@ window.AID = window.AID || {};
   // ---------------- Trend cards ----------------
   function adoptionCard(ctx, t) {
     const a = ctx.adoptionSeries();
-    const c = card({ id: 'exec-adoption', help: 'c-adoption', title: 'AI adoption over time', sub: 'Share of developers using Cursor in each month.', height: 260 });
+    const c = card({ id: 'exec-adoption', help: 'c-adoption', title: 'AI adoption over time', sub: 'Share of developers using ' + AID.tool.any + ' in each month.', height: 260 });
     const markerIdx = ctx.perDev ? -1 : ctx.months.indexOf(ctx.rolloutIdx);
     const series = [
       { name: 'Active (' + ctx.thr + '+ days)', values: a.active, color: t.series[0] },

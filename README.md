@@ -1,13 +1,14 @@
 # AI Developer Productivity Dashboard
 
-A local HTML dashboard that shows how AI adoption (Cursor) relates to developer productivity (Jira, GitHub).
+A local HTML dashboard that shows how AI adoption (Cursor, GitHub Copilot, or both) relates to developer productivity (Jira, GitHub).
 No backend and no hosting. Open `index.html` in a browser.
 
 ## Use it
 
 1. Open `index.html` in Chrome, Edge, Safari, or Firefox.
 2. Drop `developers.csv` and `developer_monthly_metrics.csv` on the page, or click **Choose CSV files**.
-3. Use the **Executive summary** and **Explore** tabs. The **Guide** tab explains how each number is calculated and how to read it.
+3. Pick the AI tool in the filter bar: **Cursor**, **Copilot**, or **Both**. Every AI usage metric, the adoption month, the usage tiers, and the AI effect follow this choice.
+4. Use the **Executive summary** and **Explore** tabs. The **Guide** tab explains how each number is calculated and how to read it.
 
 To preview without real data, click **Explore with demo data** (or open `index.html?demo`).
 The demo has about 500 synthetic developers in 3 orgs. **Download demo CSVs** gives you files in the exact expected format.
@@ -36,13 +37,19 @@ The demo has about 500 synthetic developers in 3 orgs. **Download demo CSVs** gi
 - A developer key: `devId` (preferred), `email`, `cursorUserId`, `jiraAccountId`, or `githubLogin`. The dashboard matches it to the same column in `developers.csv`. The match ignores case.
 - A month: `month`, `period`, `yearMonth`, `monthStart`, or `date`. All of these formats work: `2025-03`, `2025-03-01`, `3/1/2025`, `03/2025`, `Mar 2025`, `202503`.
 
-All other columns are the Cursor, Jira, and GitHub metrics from the schema. Column order does not matter. Spaces around headers are trimmed. The dashboard ignores extra columns, and a missing metric column shows as empty.
+All other columns are the Cursor, Copilot, Jira, and GitHub metrics from the schema. The Copilot columns start with `copilot` (`copilotActiveDays`, `copilotTotalRequests`, …) and are optional. Without them, the **Copilot** and **Both** buttons are disabled. Column order does not matter. Spaces around headers are trimmed. The dashboard ignores extra columns, and a missing metric column shows as empty.
 
 Blank cells:
-- A blank Cursor usage cell counts as 0, because no usage means zero.
+- A blank Cursor or Copilot usage cell counts as 0, because no usage means zero.
 - A blank Jira or GitHub cell counts as missing, not as 0.
 
 ## How the analysis works
+
+**AI tool.** The usage metrics use the Cursor columns, the Copilot columns, or both:
+- **Both** adds the two tools together for requests, lines, tabs, and spend. Active days = the higher of the two, because the data has no daily detail.
+- Composer, Cmd+K, and Bugbot are Cursor features. The Copilot view hides them. The Both view uses the Cursor values.
+- Copilot has no rejects column. Copilot rejects = `copilotTotalApplies` − `copilotTotalAccepts`.
+- A tool in use from the first month of the data has no months before the split. Set the rollout month in Settings, or use the per-developer split.
 
 **AI effect (difference-in-differences).** The Executive summary uses this method.
 1. The dashboard fits a model with a *developer effect* (each developer's own level) and a *month effect* (company-wide change in that calendar month). It fits the model only on months without AI: all months of non-adopters, and the months before adoption for adopters.
@@ -65,11 +72,11 @@ The verdict shows the headline effect with all three groups. If the results are 
 - *Each developer's adoption month*. The split is the developer's first month with the active-days threshold. Non-adopters split at the median adoption month, so they become a comparison group.
 - *Ramp-up months to skip*. This setting removes the months right after the split.
 
-**New hires.** A new hire is a developer whose first month of work comes after the first month in the data. Work = any PRs, Jira issues, story points, GitHub additions, or Cursor active days. The dashboard leaves out each new hire's first 3 onboarding months from every chart, table, and statistic. You can change the number of months in Settings (*New-hire onboarding months to skip*).
+**New hires.** A new hire is a developer whose first month of work comes after the first month in the data. Work = any PRs, Jira issues, story points, GitHub additions, or active days of the selected AI tool. The dashboard leaves out each new hire's first 3 onboarding months from every chart, table, and statistic. You can change the number of months in Settings (*New-hire onboarding months to skip*).
 
 **Paired comparison.** Each developer is compared with their own baseline: the after-period average minus the before-period average. Then the dashboard averages these per-developer changes. A developer needs 2+ months on each side. Thus new hires and leavers do not change the result. "Improved" or "Worse" shows only when the 95% confidence interval excludes zero.
 
-**AI usage tiers.** Each developer's tier comes from their average Cursor active days per month in the after period: Non-adopter (< 1), Light (1–4), Medium (5–11), Heavy (12+). You can change the Medium and Heavy thresholds in Settings. The main evidence that AI causes a change is a comparison of tiers over the same months. If heavy users improved more than non-adopters, seasonality and org-wide changes cannot explain the gap.
+**AI usage tiers.** Each developer's tier comes from their average active days per month (selected AI tool) in the after period: Non-adopter (< 1), Light (1–4), Medium (5–11), Heavy (12+). You can change the Medium and Heavy thresholds in Settings. The main evidence that AI causes a change is a comparison of tiers over the same months. If heavy users improved more than non-adopters, seasonality and org-wide changes cannot explain the gap.
 
 **Lift.** Lift = a tier's improvement minus the improvement of non-adopters in the same group (for example, heavy-user SDE2s vs non-adopter SDE2s), in percentage points. Positive = better. The 95% CI uses the standard errors of both cells. Cells with fewer developers than the *Minimum developers per group* setting (default 5) are hidden.
 
@@ -90,7 +97,7 @@ The verdict shows the headline effect with all three groups. If the results are 
 - A before/after table for every metric.
 - A correlation heatmap with three levels: per-developer change, per developer, or per developer-month. Click a cell to plot that pair in the relationship explorer.
 - A group × metric heatmap. Use *Level × usage* to see every key metric for each level and tier.
-- Productivity by monthly AI usage, the Cursor feature mix, the usage distribution, and the primary model mix.
+- Productivity by monthly AI usage, the AI feature mix, the usage distribution, and the primary model mix.
 - A developer table with search and sorting.
 
 **Guide**

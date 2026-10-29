@@ -6,21 +6,25 @@ window.AID = window.AID || {};
   // better: 'up' = higher is better, 'down' = lower is better, 'neutral' = no direction.
   // empty: value used when the CSV cell is blank ('zero' or 'null').
   // unit: drives formatting (count | days | hours | pct | usd).
+  // usage: an AI tool metric. Its source, label, and desc follow the selected AI tool ({tool} = tool name; descBy = desc per tool).
+  // cursorOnly: Cursor has the feature, Copilot does not.
   const METRICS = [
-    // ---- Cursor (AI usage) ----
-    { key: 'activeDays', label: 'Cursor active days', short: 'Active days', source: 'Cursor', unit: 'days', better: 'neutral', empty: 'zero', desc: 'Days in the month with any Cursor activity.' },
-    { key: 'totalRequests', label: 'AI requests', short: 'Requests', source: 'Cursor', unit: 'count', better: 'neutral', empty: 'zero', desc: 'All Cursor AI requests in the month.' },
-    { key: 'agentRequests', label: 'Agent requests', short: 'Agent', source: 'Cursor', unit: 'count', better: 'neutral', empty: 'zero' },
-    { key: 'composerRequests', label: 'Composer requests', short: 'Composer', source: 'Cursor', unit: 'count', better: 'neutral', empty: 'zero' },
-    { key: 'chatRequests', label: 'Chat requests', short: 'Chat', source: 'Cursor', unit: 'count', better: 'neutral', empty: 'zero' },
-    { key: 'cmdkUsages', label: 'Cmd+K uses', short: 'Cmd+K', source: 'Cursor', unit: 'count', better: 'neutral', empty: 'zero' },
-    { key: 'bugbotUsages', label: 'Bugbot uses', short: 'Bugbot', source: 'Cursor', unit: 'count', better: 'neutral', empty: 'zero' },
-    { key: 'totalTabsAccepted', label: 'Tab completions accepted', short: 'Tabs accepted', source: 'Cursor', unit: 'count', better: 'neutral', empty: 'zero' },
-    { key: 'acceptedLinesAdded', label: 'AI lines accepted', short: 'AI lines', source: 'Cursor', unit: 'count', better: 'neutral', empty: 'zero', desc: 'Lines added from accepted AI suggestions.' },
-    { key: 'tabAcceptRate', label: 'Tab acceptance rate', short: 'Tab accept %', source: 'Cursor', unit: 'pct', better: 'neutral', derived: true, desc: 'totalTabsAccepted ÷ totalTabsShown.' },
-    { key: 'aiAcceptRate', label: 'AI suggestion acceptance rate', short: 'AI accept %', source: 'Cursor', unit: 'pct', better: 'neutral', derived: true, desc: 'totalAccepts ÷ (totalAccepts + totalRejects).' },
-    { key: 'aiLineShare', label: 'AI share of added lines', short: 'AI line share', source: 'Cursor', unit: 'pct', better: 'neutral', derived: true, desc: 'acceptedLinesAdded ÷ GitHub additions, capped at 100%. A rough signal: not every accepted line reaches a PR.' },
-    { key: 'spendDollars', label: 'Cursor spend', short: 'Spend', source: 'Cursor', unit: 'usd', better: 'neutral', empty: 'zero', desc: 'Cursor spend for the developer in the month.' },
+    // ---- AI usage (Cursor, Copilot, or both) ----
+    { key: 'activeDays', label: '{tool} active days', short: 'Active days', usage: true, unit: 'days', better: 'neutral', empty: 'zero', desc: 'Days in the month with any {tool} activity.',
+      descBy: { both: 'The higher of Cursor active days and Copilot active days in the month. The data has no daily detail, so the days with either tool can be more.' } },
+    { key: 'totalRequests', label: 'AI requests', short: 'Requests', usage: true, unit: 'count', better: 'neutral', empty: 'zero', desc: 'All {tool} AI requests in the month.' },
+    { key: 'agentRequests', label: 'Agent requests', short: 'Agent', usage: true, unit: 'count', better: 'neutral', empty: 'zero' },
+    { key: 'composerRequests', label: 'Composer requests', short: 'Composer', usage: true, cursorOnly: true, unit: 'count', better: 'neutral', empty: 'zero' },
+    { key: 'chatRequests', label: 'Chat requests', short: 'Chat', usage: true, unit: 'count', better: 'neutral', empty: 'zero' },
+    { key: 'cmdkUsages', label: 'Cmd+K uses', short: 'Cmd+K', usage: true, cursorOnly: true, unit: 'count', better: 'neutral', empty: 'zero' },
+    { key: 'bugbotUsages', label: 'Bugbot uses', short: 'Bugbot', usage: true, cursorOnly: true, unit: 'count', better: 'neutral', empty: 'zero' },
+    { key: 'totalTabsAccepted', label: 'Tab completions accepted', short: 'Tabs accepted', usage: true, unit: 'count', better: 'neutral', empty: 'zero' },
+    { key: 'acceptedLinesAdded', label: 'AI lines accepted', short: 'AI lines', usage: true, unit: 'count', better: 'neutral', empty: 'zero', desc: 'Lines added from accepted AI suggestions.' },
+    { key: 'tabAcceptRate', label: 'Tab acceptance rate', short: 'Tab accept %', usage: true, unit: 'pct', better: 'neutral', derived: true, desc: 'totalTabsAccepted ÷ totalTabsShown.' },
+    { key: 'aiAcceptRate', label: 'AI suggestion acceptance rate', short: 'AI accept %', usage: true, unit: 'pct', better: 'neutral', derived: true, desc: 'totalAccepts ÷ (totalAccepts + totalRejects).',
+      descBy: { copilot: 'totalAccepts ÷ totalApplies. Copilot has no rejects column.', both: 'totalAccepts ÷ (totalAccepts + totalRejects), both tools added together. Copilot rejects = applies − accepts.' } },
+    { key: 'aiLineShare', label: 'AI share of added lines', short: 'AI line share', usage: true, unit: 'pct', better: 'neutral', derived: true, desc: 'acceptedLinesAdded ÷ GitHub additions, capped at 100%. A rough signal: not every accepted line reaches a PR.' },
+    { key: 'spendDollars', label: '{tool} spend', short: 'Spend', usage: true, unit: 'usd', better: 'neutral', empty: 'zero', desc: '{tool} spend for the developer in the month.' },
     // ---- Jira ----
     { key: 'throughput', label: 'Jira issues done', short: 'Throughput', source: 'Jira', unit: 'count', better: 'up', desc: 'Issues completed in the month (no subtasks).' },
     { key: 'thoughputWithSubtasks', label: 'Jira issues done (incl. subtasks)', short: 'Throughput+sub', source: 'Jira', unit: 'count', better: 'up' },
@@ -41,16 +45,43 @@ window.AID = window.AID || {};
     { key: 'changedFiles', label: 'Files changed', short: 'Files', source: 'GitHub', unit: 'count', better: 'neutral' },
     { key: 'medianTimeToMergeHours', label: 'Median time to merge', short: 'Time to merge', source: 'GitHub', unit: 'hours', better: 'down', desc: 'Median hours from PR open to merge.' },
     { key: 'jiraLinkedPrs', label: 'Jira-linked PRs', short: 'Linked PRs', source: 'GitHub', unit: 'count', better: 'neutral' },
-    { key: 'costPerMergedPr', label: 'Cursor spend per merged PR', short: '$ / PR', source: 'Cursor', unit: 'usd', better: 'down', derived: true, desc: 'spendDollars ÷ prsMerged, for months with at least one merged PR.' },
+    { key: 'costPerMergedPr', label: '{tool} spend per merged PR', short: '$ / PR', usage: true, unit: 'usd', better: 'down', derived: true, desc: '{tool} spend ÷ PRs merged, for months with at least one merged PR.' },
   ];
+  for (const m of METRICS) if (m.usage) { m.labelT = m.label; m.descT = m.desc; }
 
   const BY_KEY = Object.fromEntries(METRICS.map((m) => [m.key, m]));
+
+  // ---------- AI tool ----------
+  // The usage metrics use the Cursor column names. The AI tool setting picks where their values come from: the Cursor
+  // column, the Copilot column (copilot + Key), or both together. AID.data.applyTool writes the values into each row.
+  const TOOLS = [
+    { key: 'cursor', label: 'Cursor', any: 'Cursor' },
+    { key: 'copilot', label: 'Copilot', any: 'Copilot' },
+    { key: 'both', label: 'Cursor + Copilot', short: 'Both', any: 'Cursor or Copilot' },
+  ];
+  const COPILOT_KEYS = ['spendDollars', 'contractTotalSpend', 'activeDays', 'totalRequests', 'agentRequests', 'chatRequests', 'totalLinesAdded', 'acceptedLinesAdded',
+    'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts'];
+  const copilotKey = (k) => 'copilot' + k[0].toUpperCase() + k.slice(1);
+
+  function setTool(key) {
+    const tool = TOOLS.find((t) => t.key === key) || TOOLS[0];
+    AID.tool = tool;
+    for (const m of METRICS) {
+      if (!m.usage) continue;
+      const desc = (m.descBy && m.descBy[tool.key]) || m.descT;
+      m.source = tool.label;
+      m.label = m.labelT.replace('{tool}', tool.label);
+      m.desc = desc ? desc.replace(/\{tool\}/g, tool.label) : desc;
+    }
+    AID.USAGE_METRICS = METRICS.filter((m) => m.usage && m.key !== 'costPerMergedPr' && available(m.key)).map((m) => m.key);
+  }
+  // False for a Cursor-only metric in the Copilot view.
+  function available(key) { const m = BY_KEY[key]; return !!m && !(m.cursorOnly && AID.tool.key === 'copilot'); }
 
   // The metrics that answer "are developers more productive?" on the executive page.
   const KEY_PRODUCTIVITY = ['prsMerged', 'throughput', 'storyPoints', 'medianCycleDays', 'medianTimeToMergeHours'];
   const QUALITY_GUARDRAIL = 'reopenRatePct';
-  const OUTCOME_METRICS = METRICS.filter((m) => m.source !== 'Cursor').map((m) => m.key).concat(['costPerMergedPr']);
-  const USAGE_METRICS = METRICS.filter((m) => m.source === 'Cursor' && m.key !== 'costPerMergedPr').map((m) => m.key);
+  const OUTCOME_METRICS = METRICS.filter((m) => !m.usage).map((m) => m.key).concat(['costPerMergedPr']);
 
   const GROUPS = [
     { key: 'org', label: 'Org' },
@@ -105,7 +136,12 @@ window.AID = window.AID || {};
   AID.KEY_PRODUCTIVITY = KEY_PRODUCTIVITY;
   AID.QUALITY_GUARDRAIL = QUALITY_GUARDRAIL;
   AID.OUTCOME_METRICS = OUTCOME_METRICS;
-  AID.USAGE_METRICS = USAGE_METRICS;
   AID.GROUPS = GROUPS;
+  AID.TOOLS = TOOLS;
+  AID.COPILOT_KEYS = COPILOT_KEYS;
+  AID.copilotKey = copilotKey;
+  AID.setTool = setTool;
+  AID.available = available;
   AID.fmt = { value: fmt, metric: fmtMetric, pct: fmtPct, pts: fmtPts, compact };
+  setTool('cursor');
 })(window.AID);

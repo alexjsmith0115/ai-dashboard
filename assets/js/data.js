@@ -10,6 +10,8 @@ window.AID = window.AID || {};
     ['devid', 'devId'], ['dev_id', 'devId'], ['developerid', 'devId'], ['developer_id', 'devId'],
     ['email', 'email'], ['cursoruserid', 'cursorUserId'], ['jiraaccountid', 'jiraAccountId'], ['githublogin', 'githubLogin'],
   ];
+  // Raw AI usage columns that are not in the metric catalog, but feed derived metrics or the combined view.
+  const USAGE_EXTRA = ['contractTotalSpend', 'totalLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalApplies', 'totalAccepts', 'totalRejects'];
   const MONTH_CANDIDATES = ['month', 'period', 'yearmonth', 'year_month', 'monthstart', 'month_start', 'reportmonth', 'date'];
   const MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
@@ -84,7 +86,7 @@ window.AID = window.AID || {};
       id: F('devId'), squad: F('squadId'), email: F('email'), name: F('name'), orgLeader: F('orgLeader'),
       org: F('orgName'), dept: F('department'), manager: F('manager'), role: F('role'), level: F('jobLevel'),
       isIC: F('isIC'), cursor: F('cursorUserId'), jira: F('jiraAccountId'), gh: F('githubLogin'),
-      project: F('primaryProject'), repo: F('primaryRepo'),
+      project: F('primaryProject'), repo: F('primaryRepo'), copilot: F('copilotUserId'), copilotSpend: F('copilotTotalSpend'),
     };
     if (!col.id) throw new Error('developers.csv has no devId column.');
     const devs = [];
@@ -113,11 +115,41 @@ window.AID = window.AID || {};
         githubLogin: g(col.gh, ''),
         project: g(col.project, ''),
         repo: g(col.repo, ''),
+        copilotUserId: g(col.copilot, ''),
+        copilotTotalSpend: col.copilotSpend ? num(r[col.copilotSpend]) : null,
         rows: [],
       });
     }
     if (dup) warnings.push(dup + ' duplicate devId rows in developers.csv were skipped.');
     return devs;
+  }
+
+  const isNum = (x) => x != null && isFinite(x);
+  const addN = (a, b) => (isNum(a) || isNum(b) ? (a || 0) + (b || 0) : null);
+  const maxN = (a, b) => (isNum(a) || isNum(b) ? Math.max(a || 0, b || 0) : null);
+
+  // Fills each row's AI usage values (r.v) from the Cursor columns, the Copilot columns, or both ('cursor' | 'copilot' | 'both').
+  // Both: counts and spend are added, active days = the higher of the two (a developer can use both tools on one day).
+  // Cursor-only features are blank for Copilot. Copilot has no rejects column, so its rejects = applies − accepts.
+  function applyTool(ds, tool) {
+    const keys = AID.METRICS.filter((m) => m.usage && !m.derived).map((m) => m.key).concat(USAGE_EXTRA);
+    const cpOf = new Map(AID.COPILOT_KEYS.map((k) => [k, AID.copilotKey(k)]));
+    const cpA = cpOf.get('activeDays'), cpAp = cpOf.get('totalApplies'), cpAc = cpOf.get('totalAccepts');
+    for (const r of ds.rows) {
+      const w = r.raw, v = r.v;
+      const cpRejects = isNum(w[cpAp]) && isNum(w[cpAc]) ? Math.max(0, w[cpAp] - w[cpAc]) : null;
+      for (const k of keys) {
+        const c = w[k], p = cpOf.has(k) ? w[cpOf.get(k)] : null;
+        if (tool === 'copilot') v[k] = cpOf.has(k) ? p : k === 'totalRejects' ? cpRejects : null;
+        else if (tool === 'both') v[k] = !cpOf.has(k) ? (k === 'totalRejects' ? addN(c, cpRejects) : c) : k === 'activeDays' ? maxN(c, p) : addN(c, p);
+        else v[k] = c;
+      }
+      derive(v);
+      const cur = r.models.cursor, cp = r.models.copilot;
+      r.model = tool === 'copilot' ? cp : tool === 'both' ? ((w.activeDays || 0) >= (w[cpA] || 0) ? cur || cp : cp || cur) : cur;
+    }
+    ds.tool = tool;
+    ds.hasModel = tool === 'copilot' ? ds.models.copilot : tool === 'both' ? ds.models.cursor || ds.models.copilot : ds.models.cursor;
   }
 
   function derive(v) {
@@ -156,15 +188,19 @@ window.AID = window.AID || {};
 
     // Numeric columns present in the file
     const present = new Map(); // metric key -> field name in file
-    const rawCols = AID.METRICS.filter((m) => !m.derived).map((m) => m.key)
-      .concat(['contractTotalSpend', 'totalLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalApplies', 'totalAccepts', 'totalRejects']);
+    const copilotCols = AID.COPILOT_KEYS.map(AID.copilotKey);
+    const rawCols = AID.METRICS.filter((m) => !m.derived).map((m) => m.key).concat(USAGE_EXTRA, copilotCols);
     for (const k of rawCols) {
       const f = findField(metParsed.fields, k.toLowerCase());
       if (f) present.set(k, f);
     }
-    const missing = AID.METRICS.filter((m) => !m.derived && !present.has(m.key)).map((m) => m.key);
+    // A Copilot column takes its blank-cell rule from its Cursor column.
+    const metaOf = new Map(AID.COPILOT_KEYS.map((k, i) => [copilotCols[i], AID.M[k]]));
+    const tools = { cursor: present.has('activeDays'), copilot: present.has(AID.copilotKey('activeDays')) };
+    const missing = AID.METRICS.filter((m) => !m.derived && !present.has(m.key) && (tools.cursor || !m.usage)).map((m) => m.key);
     if (missing.length) warnings.push('Missing metric columns (shown as empty): ' + missing.join(', ') + '.');
     const modelField = findField(metParsed.fields, 'primarymodel');
+    const copilotModelField = findField(metParsed.fields, 'copilotprimarymodel');
 
     const rows = [];
     const unmatched = new Set();
@@ -178,15 +214,16 @@ window.AID = window.AID || {};
       const sk = dev.id + '|' + month;
       if (seen.has(sk)) { dupRows++; continue; }
       seen.add(sk);
-      const v = {};
+      const raw = {};
       for (const [k, f] of present) {
         let n = num(r[f]);
-        const meta = AID.M[k];
+        const meta = AID.M[k] || metaOf.get(k);
         if (n == null && meta && meta.empty === 'zero') n = 0;
-        v[k] = n;
+        raw[k] = n;
       }
-      derive(v);
-      const row = { dev, month, mi: monthIndex(month), v, model: modelField ? clean(r[modelField], '') : '' };
+      const models = { cursor: modelField ? clean(r[modelField], '') : '', copilot: copilotModelField ? clean(r[copilotModelField], '') : '' };
+      // raw = every column as loaded. v = the values the analysis reads, with AI usage from the selected tool (applyTool).
+      const row = { dev, month, mi: monthIndex(month), raw, v: Object.assign({}, raw), models, model: '' };
       rows.push(row);
       dev.rows.push(row);
     }
@@ -201,11 +238,13 @@ window.AID = window.AID || {};
     const months = [];
     for (let i = minI; i <= maxI; i++) months.push(i);
 
-    return {
-      devs, rows, months, warnings, keyField, monthField,
-      hasModel: !!modelField,
+    const ds = {
+      devs, rows, months, warnings, keyField, monthField, tools,
+      models: { cursor: !!modelField, copilot: !!copilotModelField },
       devsWithData: devs.filter((d) => d.rows.length).length,
     };
+    applyTool(ds, tools.cursor || !tools.copilot ? 'cursor' : 'copilot');
+    return ds;
   }
 
   function readFile(file) {
@@ -221,5 +260,5 @@ window.AID = window.AID || {};
     return Papa.unparse({ fields, data: rows.map((r) => fields.map((f) => r[f])) });
   }
 
-  AID.data = { parseCsv, classify, buildDataset, readFile, normalizeMonth, monthIndex, monthKey, monthLabel, toCsv };
+  AID.data = { parseCsv, classify, buildDataset, applyTool, readFile, normalizeMonth, monthIndex, monthKey, monthLabel, toCsv };
 })(window.AID);

@@ -2,13 +2,14 @@
 window.AID = window.AID || {};
 (function (AID) {
   'use strict';
-  const { el, select } = AID.ui;
+  const { el, select, seg } = AID.ui;
   const STORE_KEY = 'ai-dev-dashboard:v1';
 
   const DEFAULTS = {
     tab: 'exec',
     theme: 'auto',
     showSettings: false,
+    tool: 'cursor',
     filters: { org: '', domain: '', team: '', level: '', icOnly: true, from: '', to: '' },
     settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12 },
     exec: { metric: 'prsMerged', groupBy: 'org', crossBy: 'level', crossMode: 'did' },
@@ -108,6 +109,27 @@ window.AID = window.AID || {};
     saveState();
   }
 
+  // ---------- AI tool ----------
+  const hasTool = (t) => !!dataset && (t === 'both' ? dataset.tools.cursor && dataset.tools.copilot : dataset.tools[t]);
+
+  // Points the AI usage metrics at the selected tool. If the loaded data does not have that tool, uses one it has.
+  function syncTool() {
+    let tool = state.tool;
+    if (dataset && !hasTool(tool)) tool = hasTool('cursor') ? 'cursor' : hasTool('copilot') ? 'copilot' : 'cursor';
+    AID.setTool(tool);
+    if (dataset && dataset.tool !== tool) AID.data.applyTool(dataset, tool);
+    // A saved metric choice can be a Cursor-only metric that the Copilot view does not have.
+    for (const k of ['trendMetric', 'sx', 'sy']) if (!AID.available(state.explore[k])) state.explore[k] = DEFAULTS.explore[k];
+  }
+
+  function toolPicker() {
+    const opts = AID.TOOLS.map((t) => ({
+      value: t.key, label: t.short || t.label, disabled: !hasTool(t.key),
+      title: !hasTool(t.key) ? (t.key === 'both' ? 'The metrics file needs both Cursor and Copilot columns.' : 'The metrics file has no ' + t.label + ' columns.') : t.short ? t.label + ' combined' : null,
+    }));
+    return el('div.field', el('span', { text: 'AI tool' }), seg('AI tool', opts, AID.tool.key, (v) => update({ tool: v })));
+  }
+
   // ---------- Chrome ----------
   const $ = (id) => document.getElementById(id);
 
@@ -139,6 +161,8 @@ window.AID = window.AID || {};
     const setF = (patch) => update({ filters: patch });
 
     inner.append(
+      toolPicker(),
+      el('div.filter-sep'),
       select('Org', opt('All orgs', uniq(devs, 'org')), f.org, (v) => setF({ org: v, domain: '', team: '' })),
       select('Domain', opt('All domains', uniq(inOrg, 'domain')), f.domain, (v) => setF({ domain: v, team: '' })),
       select('Team', opt('All teams', uniq(inDomain, 'team')), f.team, (v) => setF({ team: v })),
@@ -172,7 +196,7 @@ window.AID = window.AID || {};
       numField('Ramp-up months to skip', s.ramp, 0, 6, (n) => setS({ ramp: n }), 'Months right after the split that count as neither before nor after.'),
       numField('New-hire onboarding months to skip', s.onboard, 0, 12, (n) => setS({ onboard: n }), 'A new hire is a developer whose first month of work is after the first month in the data. Their first months are left out of all results.'),
       numField('Minimum developers per group', s.minGroup, 2, 30, (n) => setS({ minGroup: n }), 'Groups and job level × usage cells with fewer developers (with enough months before and after) are hidden from charts and flagged "Small sample". Small groups give wide, unreliable confidence intervals.'),
-      numField('Active threshold (days / month)', s.activeDays, 2, 20, (n) => setS({ activeDays: n, highDays: Math.max(n + 1, s.highDays) }), 'A developer counts as an active AI user in a month with this many Cursor active days. Also the start of the "Medium" usage tier.'),
+      numField('Active threshold (days / month)', s.activeDays, 2, 20, (n) => setS({ activeDays: n, highDays: Math.max(n + 1, s.highDays) }), 'A developer counts as an active AI user in a month with this many ' + AID.M.activeDays.label + '. Also the start of the "Medium" usage tier.'),
       numField('Heavy-usage threshold (days / month)', s.highDays, 2, 25, (n) => setS({ highDays: Math.max(n, s.activeDays + 1) }), 'Average active days per month for the "Heavy" usage tier. Under ' + AID.analysis.NON_ADOPTER_DAYS + ' day = non-adopter.'));
   }
 
@@ -205,7 +229,8 @@ window.AID = window.AID || {};
       el('p', { style: { marginTop: '8px' } }, 'developer_monthly_metrics.csv — one row per developer per month. Needs a developer key (',
         el('code', { text: 'devId' }), ', ', el('code', { text: 'email' }), ', ', el('code', { text: 'cursorUserId' }), ', ', el('code', { text: 'jiraAccountId' }), ', or ',
         el('code', { text: 'githubLogin' }), ') and a month column (', el('code', { text: 'month' }), ' or ', el('code', { text: 'period' }),
-        '; formats like 2025-03, 2025-03-01, 3/1/2025, or Mar 2025 all work), plus the Cursor, Jira, and GitHub columns.'),
+        '; formats like 2025-03, 2025-03-01, 3/1/2025, or Mar 2025 all work), plus the Cursor, Jira, and GitHub columns. Copilot columns (',
+        el('code', { text: 'copilotActiveDays' }), ', ', el('code', { text: 'copilotTotalRequests' }), ', …) are optional. With them, the AI tool switch shows Copilot or both tools.'),
       el('p', { style: { marginTop: '8px', color: 'var(--muted)' }, text: 'Column order does not matter. Extra columns are ignored. Missing metric columns show as empty. Download the demo CSVs to see the exact format.' }));
     main.append(el('div.welcome', dz, req));
   }
@@ -213,6 +238,7 @@ window.AID = window.AID || {};
   // ---------- Main render ----------
   function render() {
     applyTheme();
+    syncTool();
     renderTopbar();
     renderFilters();
     const main = $('main');
@@ -273,6 +299,11 @@ window.AID = window.AID || {};
     if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (state.theme === 'auto') render(); });
     let rt = null;
     window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => AID.charts.gc(), 200); });
+    // Sticky bars below the top bar (the Executive summary headline metric) need its height, which changes when it wraps.
+    const topbar = document.querySelector('.topbar');
+    const setTopbarH = () => document.documentElement.style.setProperty('--topbar-h', topbar.offsetHeight + 'px');
+    setTopbarH();
+    if (window.ResizeObserver) new ResizeObserver(setTopbarH).observe(topbar);
     if (/[?&]demo\b/.test(location.search)) loadDemo(); else render();
   }
 

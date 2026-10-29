@@ -44,7 +44,7 @@ window.AID = window.AID || {};
   }
 
   function metricOptions(keys, grouped) {
-    const list = (keys || AID.METRICS.map((m) => m.key)).map((k) => AID.M[k]).filter(Boolean);
+    const list = (keys || AID.METRICS.map((m) => m.key)).filter(AID.available).map((k) => AID.M[k]);
     if (!grouped) return list.map((m) => ({ value: m.key, label: m.label }));
     const by = {};
     for (const m of list) (by[m.source] = by[m.source] || []).push({ value: m.key, label: m.label });
@@ -54,7 +54,7 @@ window.AID = window.AID || {};
   function seg(label, options, value, onChange) {
     const wrap = el('div.seg', { role: 'group', 'aria-label': label });
     for (const o of options) {
-      wrap.appendChild(el('button', { type: 'button', 'aria-pressed': String(o.value === value), onclick: () => onChange(o.value), text: o.label }));
+      wrap.appendChild(el('button', { type: 'button', 'aria-pressed': String(o.value === value), disabled: !!o.disabled, title: o.title || null, onclick: () => onChange(o.value), text: o.label }));
     }
     return wrap;
   }

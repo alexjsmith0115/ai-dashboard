@@ -126,6 +126,8 @@ p { margin: 0; }
 }
 .field input[type="number"] { min-width: 70px; width: 80px; }
 .check { display: inline-flex; align-items: center; gap: 6px; padding-bottom: 6px; color: var(--text-2); cursor: pointer; }
+.filterbar .field select { max-width: 170px; }
+.filterbar .seg button { padding: 4px 9px; }
 .filter-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 2px; }
 .filter-note { font-size: 12px; color: var(--muted); padding-bottom: 6px; }
 
@@ -148,6 +150,13 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 60px; }
 .section-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
 .section-head h2 { font-size: 19px; }
 .section-head .lede { color: var(--text-2); }
+/* Executive summary headline metric bar: sticks under the top bar. Pinned = .stuck (full-width background, border, effect shown). */
+.sticky-sentinel { height: 0; margin-bottom: -18px; }
+.exec-head { position: sticky; top: var(--topbar-h, 57px); z-index: 15; align-items: center; padding: 6px 0; margin-top: -8px; }
+.exec-head.stuck { border-image: linear-gradient(to top, var(--border) 1px, var(--page) 1px) fill 0 / 0 / 0 100vmax; margin-top: 0; }
+.exec-head-effect { display: none; color: var(--text-2); }
+.exec-head.stuck .exec-head-effect { display: inline; }
+.exec-head.stuck h2 { font-size: 16px; }
 
 .card {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -170,6 +179,7 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 60px; }
 .seg { display: inline-flex; background: var(--surface-2); border-radius: 7px; padding: 2px; gap: 2px; flex-wrap: wrap; }
 .seg button { border: 0; background: transparent; padding: 4px 10px; border-radius: 5px; cursor: pointer; color: var(--text-2); font-size: 12px; }
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 0 0 1px var(--border); font-weight: 500; }
+.seg button:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ---------- Verdict ---------- */
 .verdict { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; padding: 22px 24px; }
@@ -295,6 +305,7 @@ details.defs dd { margin: 0; color: var(--text-2); }
 @media (max-width: 640px) {
   .topbar-inner, .filterbar-inner, main, .settings { padding-left: 16px; padding-right: 16px; }
   .hero { font-size: 44px; }
+  .exec-head.stuck h2, .exec-head.stuck .exec-head-effect { display: none; }
 }
 
 /* ---------- Help: "?" button and popover ---------- */

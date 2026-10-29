@@ -11,7 +11,7 @@ window.AID = window.AID || {};
     showSettings: false,
     tool: 'cursor',
     filters: { org: '', domain: '', team: '', level: '', icOnly: true, from: '', to: '' },
-    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12 },
+    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12, tierBasis: 'days' },
     exec: { metric: 'prsMerged', groupBy: 'org', crossBy: 'level', crossMode: 'did' },
     explore: {
       trendMetric: 'prsMerged', trendGroup: 'tier', trendX: 'calendar', trendAgg: 'mean',
@@ -196,8 +196,12 @@ window.AID = window.AID || {};
       numField('Ramp-up months to skip', s.ramp, 0, 6, (n) => setS({ ramp: n }), 'Months right after the split that count as neither before nor after.'),
       numField('New-hire onboarding months to skip', s.onboard, 0, 12, (n) => setS({ onboard: n }), 'A new hire is a developer whose first month of work is after the first month in the data. Their first months are left out of all results.'),
       numField('Minimum developers per group', s.minGroup, 2, 30, (n) => setS({ minGroup: n }), 'Groups and job level × usage cells with fewer developers (with enough months before and after) are hidden from charts and flagged "Small sample". Small groups give wide, unreliable confidence intervals.'),
-      numField('Active threshold (days / month)', s.activeDays, 2, 20, (n) => setS({ activeDays: n, highDays: Math.max(n + 1, s.highDays) }), 'A developer counts as an active AI user in a month with this many ' + AID.M.activeDays.label + '. Also the start of the "Medium" usage tier.'),
-      numField('Heavy-usage threshold (days / month)', s.highDays, 2, 25, (n) => setS({ highDays: Math.max(n, s.activeDays + 1) }), 'Average active days per month for the "Heavy" usage tier. Under ' + AID.analysis.NON_ADOPTER_DAYS + ' day = non-adopter.'));
+      el('div', select('Usage tier based on', [{ value: 'days', label: 'Active days' }, { value: 'spend', label: 'Spend' }], s.tierBasis, (v) => setS({ tierBasis: v })),
+        el('p.help', { text: s.tierBasis === 'spend'
+          ? 'Light, Medium, and Heavy = thirds of the developers by average ' + AID.M.spendDollars.label + ' per month in the after period' + (ctx && ctx.spendCuts ? ' (cut points ' + AID.fmt.value(ctx.spendCuts[0], 'usd') + ' and ' + AID.fmt.value(ctx.spendCuts[1], 'usd') + ')' : '') + '. Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.' + (ctx && ctx.tierBasis !== 'spend' ? ' The data has no spend values, so active days are used.' : '')
+          : 'Light, Medium, and Heavy from average active days per month in the after period, with the two thresholds below.' })),
+      numField('Active threshold (days / month)', s.activeDays, 2, 20, (n) => setS({ activeDays: n, highDays: Math.max(n + 1, s.highDays) }), 'A developer counts as an active AI user in a month with this many ' + AID.M.activeDays.label + '.' + (s.tierBasis === 'spend' ? '' : ' Also the start of the "Medium" usage tier.')),
+      numField('Heavy-usage threshold (days / month)', s.highDays, 2, 25, (n) => setS({ highDays: Math.max(n, s.activeDays + 1) }), s.tierBasis === 'spend' ? 'Not used: usage tiers are based on spend.' : 'Average active days per month for the "Heavy" usage tier. Under ' + AID.analysis.NON_ADOPTER_DAYS + ' day = non-adopter.'));
   }
 
   function renderMessages(main) {

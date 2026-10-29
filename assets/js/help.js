@@ -75,17 +75,22 @@ window.AID = window.AID || {};
     },
     {
       id: 'm-tiers', title: 'AI usage tiers',
-      short: 'Each developer gets one usage tier from their average {tool} active days per month after adoption (or after the rollout month).',
+      short: 'Each developer gets one usage tier from their use of {tool} after adoption (or after the rollout month): by active days (default) or by spend.',
       how: [
-        'Usage = the average {tool} active days per month in the developer\'s after period.',
-        'Non-adopter: under 1 day per month. Light: 1 to {thrMinus}. Medium: {thr} to {hiMinus}. Heavy: {hi}+.',
-        'The Medium and Heavy thresholds are in Settings (Active threshold and Heavy-usage threshold).',
+        'Settings (Usage tier based on) sets the basis: Active days or Spend.',
+        'Active days: usage = the average {tool} active days per month in the developer\'s after period. Non-adopter: under 1 day per month. Light: 1 to {thrMinus}. Medium: {thr} to {hiMinus}. Heavy: {hi}+. The thresholds are in Settings.',
+        'Spend: non-adopter is still under 1 active day per month. The other developers are split into thirds by their average {tool} spend per month in the after period: Light = bottom third, Medium = middle third, Heavy = top third. The tier labels show the dollar cut points.',
+        'The spend thirds come from every developer in the date range, not only the filtered group. Thus a filter does not change the tier of a developer.',
       ],
       read: [
         'If AI causes the effect, the effect grows from light to medium to heavy users. This is called a dose-response pattern. It is one of the strongest signs of a real effect.',
         'If light and heavy users improved by the same amount, something other than AI use (for example, a process change) is the more likely cause.',
       ],
-      watch: ['Developers choose how much to use AI. Heavy users may differ from light users in other ways (role, type of work, motivation).'],
+      watch: [
+        'Developers choose how much to use AI. Heavy users may differ from light users in other ways (role, type of work, motivation).',
+        'Spend also depends on model prices and pricing changes, not only on use. A developer who uses an expensive model looks heavier. Busy developers spend more, so heavy spenders can look more productive without an AI effect. Compare the result with active-day tiers.',
+        'Many developers with the same spend (for example, the same seat price) make the thirds uneven: equal values always go into the same tier.',
+      ],
     },
     {
       id: 'm-did', title: 'AI effect (difference-in-differences)',
@@ -427,7 +432,7 @@ window.AID = window.AID || {};
     },
     {
       id: 'c-usagedist', title: 'How much each developer uses AI', area: 'Explore',
-      short: 'The number of developers at each level of average {tool} active days per month.',
+      short: 'The number of developers at each level of average {tool} active days per month, or of average spend per month when usage tiers are based on spend.',
       how: ['Each developer is counted once, by their average active days per month in the after period. Color = usage tier.'],
       read: ['A tall bar at <1 means many non-adopters. A spread to the right means many heavy users.'],
       see: ['m-tiers'],

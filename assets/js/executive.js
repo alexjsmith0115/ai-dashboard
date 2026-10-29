@@ -142,7 +142,9 @@ window.AID = window.AID || {};
     const right = el('div.verdict-side',
       el('div.card-title', el('p.verdict-q', { text: 'AI effect on ' + meta.short + ' by AI usage level' }), AID.help.button('m-tiers')),
       el('div.scorecard', rows),
-      el('p.method-note', { text: 'Usage level = average ' + AID.M.activeDays.label + ' per month in the after period. Blue = better, red = worse' + (meta.better === 'down' ? ' (lower is better for this metric)' : '') + '. Pale = not statistically clear.' }),
+      el('p.method-note', { text: (ctx.tierBasis === 'spend'
+        ? 'Usage level = thirds of the adopters by average ' + AID.M.spendDollars.label + ' per month in the after period. Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.'
+        : 'Usage level = average ' + AID.M.activeDays.label + ' per month in the after period.') + ' Blue = better, red = worse' + (meta.better === 'down' ? ' (lower is better for this metric)' : '') + '. Pale = not statistically clear.' }),
       robustness(ctx, metric));
 
     return el('section.card.verdict', left, right);

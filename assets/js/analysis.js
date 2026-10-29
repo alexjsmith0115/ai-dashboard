@@ -141,22 +141,40 @@ window.AID = window.AID || {};
     };
 
     const tierCache = new Map();
-    // Usage tiers from average active days per month (of the selected AI tool) in the after period.
+    // Usage tiers. Non-adopter = under NON_ADOPTER_DAYS average active days per month in the after period, for both bases.
+    // Basis 'days': Light / Medium / Heavy from average active days (of the selected AI tool) and the two day thresholds.
+    // Basis 'spend': Light / Medium / Heavy = thirds of the other developers by average monthly spend in the after period.
+    // The thirds come from every developer in the date range (ignoring org/domain/team/level filters), so a filter does not move a tier.
+    const afterMean = (d, key) => {
+      const after = rowsOf(d).filter((r) => phaseOf(r) === 'after');
+      return mean((after.length ? after : rowsOf(d)).map((r) => r.v[key]));
+    };
+    const usageAfter = (d) => afterMean(d, 'activeDays');
+    const spendAfter = (d) => afterMean(d, 'spendDollars');
+    let tierBasis = s.tierBasis === 'spend' ? 'spend' : 'days';
+    let spendCuts = null;
+    if (tierBasis === 'spend') {
+      const vals = ds.devs.filter((d) => rowsOf(d).length && (!f.icOnly || d.isIC) && usageAfter(d) >= NON_ADOPTER_DAYS)
+        .map(spendAfter).filter(isNum).sort((a, b) => a - b);
+      if (vals.length >= 3) spendCuts = [quantile(vals, 1 / 3), quantile(vals, 2 / 3)];
+      else tierBasis = 'days'; // no spend data: fall back to active days
+    }
     const TIER_SHORT = ['Non-adopter', 'Light', 'Medium', 'Heavy'];
+    const usd = (v) => '$' + Math.round(v);
     const TIERS = [
       'Non-adopter (<' + NON_ADOPTER_DAYS + ' d/mo)',
-      'Light (' + NON_ADOPTER_DAYS + '–' + (thr - 1) + ')',
-      'Medium (' + thr + '–' + (hi - 1) + ')',
-      'Heavy (' + hi + '+ d/mo)',
+      ...(tierBasis === 'spend'
+        ? ['Light (under ' + usd(spendCuts[0]) + '/mo)', 'Medium (' + usd(spendCuts[0]) + '–' + usd(spendCuts[1]) + ')', 'Heavy (' + usd(spendCuts[1]) + '+/mo)']
+        : ['Light (' + NON_ADOPTER_DAYS + '–' + (thr - 1) + ')', 'Medium (' + thr + '–' + (hi - 1) + ')', 'Heavy (' + hi + '+ d/mo)']),
     ];
-    const usageAfter = (d) => {
-      const after = rowsOf(d).filter((r) => phaseOf(r) === 'after');
-      return mean((after.length ? after : rowsOf(d)).map((r) => r.v.activeDays));
-    };
     const tierIndex = (d) => {
       if (tierCache.has(d)) return tierCache.get(d);
       const u = usageAfter(d);
-      const i = u == null ? -1 : u >= hi ? 3 : u >= thr ? 2 : u >= NON_ADOPTER_DAYS ? 1 : 0;
+      let i;
+      if (u == null) i = -1;
+      else if (u < NON_ADOPTER_DAYS) i = 0;
+      else if (tierBasis === 'spend') { const sp = spendAfter(d); i = sp == null ? -1 : sp >= spendCuts[1] ? 3 : sp >= spendCuts[0] ? 2 : 1; }
+      else i = u >= hi ? 3 : u >= thr ? 2 : 1;
       tierCache.set(d, i);
       return i;
     };
@@ -557,13 +575,19 @@ window.AID = window.AID || {};
     const windowOf = (p) => { const m = allRowsInRange.filter((r) => phaseOf(r) === p).map((r) => r.mi); return m.length ? [Math.min(...m), Math.max(...m)] : null; };
 
     return {
-      ds, state, devs, months, onboarding, minGroup, control, CONTROLS, otherTool, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
+      ds, state, devs, months, onboarding, minGroup, control, CONTROLS, otherTool, tierBasis, spendCuts, spendAfter, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
       splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, did, didFit, didByGroup, eventStudy, compareCross, groupValues,
       adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,
       beforeWindow: windowOf('before'), afterWindow: windowOf('after'),
       // Shown when the split leaves no months before it (e.g. the selected AI tool was in use from the first month).
       noBeforeText: windowOf('before') ? null : 'No months before the split: ' + AID.tool.label + ' was in use from the first month of the data. Set the rollout month in Settings, or use the per-developer split.',
     };
+  }
+
+  // Linear-interpolated quantile of a sorted array, p in 0..1.
+  function quantile(sorted, p) {
+    const x = (sorted.length - 1) * p, i = Math.floor(x);
+    return i + 1 < sorted.length ? sorted[i] + (sorted[i + 1] - sorted[i]) * (x - i) : sorted[i];
   }
 
   function range(a, b) { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; }

@@ -305,6 +305,7 @@ window.AID = window.AID || {};
 
   // ---------------- Usage distribution ----------------
   function usageDistCard(ctx, t) {
+    if (ctx.tierBasis === 'spend') return spendDistCard(ctx, t);
     const c = card({ id: 'x-dist', height: 260, help: 'c-usagedist', title: 'How much each developer uses AI', sub: 'Developers by average ' + AID.M.activeDays.label + ' per month in the after period.' });
     const bins = [];
     // One-day bins, so bin edges line up with the tier thresholds.
@@ -323,6 +324,31 @@ window.AID = window.AID || {};
     }));
     c.foot.textContent = 'X axis: average active days per month. Color = usage tier (gray = non-adopter, then light / medium / heavy). Change the tier thresholds in Settings.';
     c.setTable(() => table([{ label: 'Avg active days', value: (b) => b.label, sortable: false }, { label: 'Developers', num: true, value: (b) => b.n }], bins, { sortable: false }));
+    return c.el;
+  }
+
+  // Spend-based tiers: developers by average monthly spend in the after period. Each bar takes the tier of most of its developers
+  // (a bar that holds a cut point can mix two tiers).
+  function spendDistCard(ctx, t) {
+    const c = card({ id: 'x-dist', height: 260, help: 'c-usagedist', title: 'How much each developer uses AI', sub: 'Developers by average ' + AID.M.spendDollars.label + ' per month in the after period.' });
+    const devs = ctx.devs.map((d) => ({ d, v: ctx.spendAfter(d), ti: ctx.tierIndex(d) })).filter((x) => x.v != null);
+    if (!devs.length) { c.empty('No spend data in range.'); return c.el; }
+    const sorted = devs.map((x) => x.v).sort((a, b) => a - b);
+    // 20 bins from the lowest spend to the 98th percentile; the last bin is open-ended.
+    const top = sorted[Math.floor(0.98 * (sorted.length - 1))];
+    const N = 20, w = Math.max(1, Math.ceil((top - sorted[0]) / N)), lo0 = Math.floor(sorted[0] / w) * w;
+    const bins = [];
+    for (let i = 0; i < N; i++) bins.push({ lo: i ? lo0 + i * w : -Infinity, hi: lo0 + (i + 1) * w, label: '$' + (lo0 + i * w), n: 0, tiers: [0, 0, 0, 0] });
+    bins[N - 1].hi = Infinity; bins[N - 1].label = '$' + (lo0 + (N - 1) * w) + '+';
+    for (const x of devs) { const b = bins.find((y) => x.v >= y.lo && x.v < y.hi); if (b) { b.n++; if (x.ti >= 0) b.tiers[x.ti]++; } }
+    const colorOf = (b) => t.tiers[b.tiers.indexOf(Math.max(...b.tiers))];
+    queueMicrotask(() => AID.charts.bars(c.canvas, {
+      labels: bins.map((b) => b.label), values: bins.map((b) => b.n), colors: bins.map(colorOf), unit: 'count',
+      valueFmt: (v) => (v ? String(v) : ''), tooltipLines: () => ['developers'],
+    }));
+    c.foot.textContent = 'X axis: average spend per month, in $' + w + ' steps. Color = usage tier: gray = non-adopter (under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day), then light / medium / heavy = thirds of the other developers by spend (cut points ' + F.value(ctx.spendCuts[0], 'usd') + ' and ' + F.value(ctx.spendCuts[1], 'usd') + ').';
+    c.setTable(() => table([{ label: 'Avg spend / mo', value: (b) => b.label, sortable: false }, { label: 'Developers', num: true, value: (b) => b.n }].concat(
+      ctx.TIER_SHORT.map((name, i) => ({ label: name, num: true, value: (b) => b.tiers[i] }))), bins, { sortable: false }));
     return c.el;
   }
 

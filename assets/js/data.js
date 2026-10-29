@@ -128,8 +128,16 @@ window.AID = window.AID || {};
   const addN = (a, b) => (isNum(a) || isNum(b) ? (a || 0) + (b || 0) : null);
   const maxN = (a, b) => (isNum(a) || isNum(b) ? Math.max(a || 0, b || 0) : null);
 
+  // Days with either tool. combinedActiveDays (counted from daily data) is exact. Without it, the higher of the two counts is the
+  // lowest possible value. The true value is at least the higher count and at most the sum, so a value outside that range is limited to it.
+  function combinedDays(w) {
+    const c = w.activeDays, p = w[AID.copilotKey('activeDays')], u = w.combinedActiveDays;
+    if (!isNum(u)) return maxN(c, p);
+    return Math.min(Math.max(u, c || 0, p || 0), (c || 0) + (p || 0));
+  }
+
   // Fills each row's AI usage values (r.v) from the Cursor columns, the Copilot columns, or both ('cursor' | 'copilot' | 'both').
-  // Both: counts and spend are added, active days = the higher of the two (a developer can use both tools on one day).
+  // Both: counts and spend are added, active days = days with either tool (combinedDays), never the sum.
   // Cursor-only features are blank for Copilot. Copilot has no rejects column, so its rejects = applies − accepts.
   function applyTool(ds, tool) {
     const keys = AID.METRICS.filter((m) => m.usage && !m.derived).map((m) => m.key).concat(USAGE_EXTRA);
@@ -141,7 +149,7 @@ window.AID = window.AID || {};
       for (const k of keys) {
         const c = w[k], p = cpOf.has(k) ? w[cpOf.get(k)] : null;
         if (tool === 'copilot') v[k] = cpOf.has(k) ? p : k === 'totalRejects' ? cpRejects : null;
-        else if (tool === 'both') v[k] = !cpOf.has(k) ? (k === 'totalRejects' ? addN(c, cpRejects) : c) : k === 'activeDays' ? maxN(c, p) : addN(c, p);
+        else if (tool === 'both') v[k] = !cpOf.has(k) ? (k === 'totalRejects' ? addN(c, cpRejects) : c) : k === 'activeDays' ? combinedDays(w) : addN(c, p);
         else v[k] = c;
       }
       derive(v);
@@ -189,14 +197,15 @@ window.AID = window.AID || {};
     // Numeric columns present in the file
     const present = new Map(); // metric key -> field name in file
     const copilotCols = AID.COPILOT_KEYS.map(AID.copilotKey);
-    const rawCols = AID.METRICS.filter((m) => !m.derived).map((m) => m.key).concat(USAGE_EXTRA, copilotCols);
+    const rawCols = AID.METRICS.filter((m) => !m.derived).map((m) => m.key).concat(USAGE_EXTRA, copilotCols, ['combinedActiveDays']);
     for (const k of rawCols) {
       const f = findField(metParsed.fields, k.toLowerCase());
       if (f) present.set(k, f);
     }
     // A Copilot column takes its blank-cell rule from its Cursor column.
     const metaOf = new Map(AID.COPILOT_KEYS.map((k, i) => [copilotCols[i], AID.M[k]]));
-    const tools = { cursor: present.has('activeDays'), copilot: present.has(AID.copilotKey('activeDays')) };
+    const tools = { cursor: present.has('activeDays'), copilot: present.has(AID.copilotKey('activeDays')), combined: present.has('combinedActiveDays') };
+    if (tools.cursor && tools.copilot && !tools.combined) warnings.push('No combinedActiveDays column. The Cursor + Copilot view uses the higher of Cursor and Copilot active days, which can be too low when the tools are used on different days.');
     const missing = AID.METRICS.filter((m) => !m.derived && !present.has(m.key) && (tools.cursor || !m.usage)).map((m) => m.key);
     if (missing.length) warnings.push('Missing metric columns (shown as empty): ' + missing.join(', ') + '.');
     const modelField = findField(metParsed.fields, 'primarymodel');
@@ -230,6 +239,9 @@ window.AID = window.AID || {};
     if (unmatched.size) warnings.push(unmatched.size + ' metric ' + keyField + ' values did not match any developer and were skipped.');
     if (badMonth) warnings.push(badMonth + ' metric rows had an unreadable ' + monthField + ' value and were skipped.');
     if (dupRows) warnings.push(dupRows + ' duplicate developer-month rows were skipped (first row kept).');
+    const cpA = AID.copilotKey('activeDays');
+    const badUnion = rows.filter((r) => isNum(r.raw.combinedActiveDays) && r.raw.combinedActiveDays !== combinedDays(r.raw)).length;
+    if (badUnion) warnings.push(badUnion + ' rows have a combinedActiveDays value below the higher of activeDays and ' + cpA + ', or above their sum. The dashboard limits these values to that range.');
     if (!rows.length) throw new Error('No metric rows matched a developer. Check that ' + keyField + ' values match developers.csv.');
 
     for (const d of devs) d.rows.sort((a, b) => a.mi - b.mi);

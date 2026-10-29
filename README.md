@@ -46,7 +46,7 @@ Blank cells:
 ## How the analysis works
 
 **AI tool.** The usage metrics use the Cursor columns, the Copilot columns, or both:
-- **Both** adds the two tools together for requests, lines, tabs, and spend. Active days = the higher of the two, because the data has no daily detail.
+- **Both** adds the two tools together for requests, lines, tabs, and spend. Active days = `combinedActiveDays`: the days with Cursor or Copilot activity, counted from daily data before you make the CSV. A day with both tools counts once (Cursor on Mon + Wed, Copilot on Tue + Wed = 3 days). If the column is missing or blank, the dashboard uses the higher of the two counts, which can be too low.
 - Composer, Cmd+K, and Bugbot are Cursor features. The Copilot view hides them. The Both view uses the Cursor values.
 - Copilot has no rejects column. Copilot rejects = `copilotTotalApplies` − `copilotTotalAccepts`.
 - A tool in use from the first month of the data has no months before the split. Set the rollout month in Settings, or use the per-developer split.

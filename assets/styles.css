@@ -206,6 +206,9 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 60px; }
   padding: 7px 10px; border-radius: 7px; background: var(--surface-2);
 }
 .score-row .name { font-size: 13px; }
+.tier-track { position: relative; height: 8px; margin-top: 5px; }
+.tier-bar { position: absolute; top: 0; height: 8px; border-radius: 4px; }
+.tier-zero { position: absolute; top: -3px; bottom: -3px; width: 1px; background: var(--axis); }
 .score-row .val { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
 
 /* Status chips: icon + label + color, never color alone */

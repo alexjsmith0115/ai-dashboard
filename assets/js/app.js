@@ -230,7 +230,8 @@ window.AID = window.AID || {};
         el('code', { text: 'devId' }), ', ', el('code', { text: 'email' }), ', ', el('code', { text: 'cursorUserId' }), ', ', el('code', { text: 'jiraAccountId' }), ', or ',
         el('code', { text: 'githubLogin' }), ') and a month column (', el('code', { text: 'month' }), ' or ', el('code', { text: 'period' }),
         '; formats like 2025-03, 2025-03-01, 3/1/2025, or Mar 2025 all work), plus the Cursor, Jira, and GitHub columns. Copilot columns (',
-        el('code', { text: 'copilotActiveDays' }), ', ', el('code', { text: 'copilotTotalRequests' }), ', …) are optional. With them, the AI tool switch shows Copilot or both tools.'),
+        el('code', { text: 'copilotActiveDays' }), ', ', el('code', { text: 'copilotTotalRequests' }), ', …) are optional. With them, the AI tool switch shows Copilot or both tools. Add ', el('code', { text: 'combinedActiveDays' }),
+        ' (days with either tool, counted from daily data) for exact active days in the Cursor + Copilot view.'),
       el('p', { style: { marginTop: '8px', color: 'var(--muted)' }, text: 'Column order does not matter. Extra columns are ignored. Missing metric columns show as empty. Download the demo CSVs to see the exact format.' }));
     main.append(el('div.welcome', dz, req));
   }

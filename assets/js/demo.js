@@ -5,7 +5,7 @@ window.AID = window.AID || {};
   'use strict';
 
   const DEV_FIELDS = ['devId', 'squadId', 'email', 'name', 'orgLeader', 'orgName', 'department', 'manager', 'role', 'jobLevel', 'isIC', 'cursorUserId', 'jiraAccountId', 'githubLogin', 'primaryProject', 'primaryRepo', 'copilotUserId', 'copilotTotalSpend'];
-  const MET_FIELDS = ['devId', 'month', 'spendDollars', 'contractTotalSpend', 'activeDays', 'totalRequests', 'composerRequests', 'agentRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages', 'totalLinesAdded', 'acceptedLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts', 'totalRejects', 'primaryModel', 'storyPoints', 'throughput', 'thoughputWithSubtasks', 'storiesdone', 'bugsDone', 'tasksDone', 'subtasksDone', 'medianCycleDays', 'meanCycleDays', 'reopenedTickets', 'reopenRatePct', 'prsOpened', 'prsMerged', 'additions', 'deletions', 'changedFiles', 'medianTimeToMergeHours', 'jiraLinkedPrs', 'copilotSpendDollars', 'copilotContractTotalSpend', 'copilotActiveDays', 'copilotTotalRequests', 'copilotAgentRequests', 'copilotChatRequests', 'copilotTotalLinesAdded', 'copilotAcceptedLinesAdded', 'copilotTotalLinesDeleted', 'copilotAcceptedLinesDeleted', 'copilotTotalTabsShown', 'copilotTotalTabsAccepted', 'copilotTotalApplies', 'copilotTotalAccepts', 'copilotPrimaryModel'];
+  const MET_FIELDS = ['devId', 'month', 'spendDollars', 'contractTotalSpend', 'activeDays', 'totalRequests', 'composerRequests', 'agentRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages', 'totalLinesAdded', 'acceptedLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts', 'totalRejects', 'primaryModel', 'storyPoints', 'throughput', 'thoughputWithSubtasks', 'storiesdone', 'bugsDone', 'tasksDone', 'subtasksDone', 'medianCycleDays', 'meanCycleDays', 'reopenedTickets', 'reopenRatePct', 'prsOpened', 'prsMerged', 'additions', 'deletions', 'changedFiles', 'medianTimeToMergeHours', 'jiraLinkedPrs', 'copilotSpendDollars', 'copilotContractTotalSpend', 'copilotActiveDays', 'copilotTotalRequests', 'copilotAgentRequests', 'copilotChatRequests', 'copilotTotalLinesAdded', 'copilotAcceptedLinesAdded', 'copilotTotalLinesDeleted', 'copilotAcceptedLinesDeleted', 'copilotTotalTabsShown', 'copilotTotalTabsAccepted', 'copilotTotalApplies', 'copilotTotalAccepts', 'copilotPrimaryModel', 'combinedActiveDays'];
 
   const ORGS = [
     { name: 'Commerce', leader: 'Dana Whitfield', effect: 0.24, speed: 0.33,
@@ -52,6 +52,11 @@ window.AID = window.AID || {};
     const cri = (a, b) => a + Math.floor(crnd() * (b - a + 1));
     const cpick = (arr) => arr[Math.floor(crnd() * arr.length)];
     const cnormal = () => { let u = 0, v = 0; while (!u) u = crnd(); while (!v) v = crnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+    // combinedActiveDays: days with either tool. Each tool's active days go on random work days of the month (own random stream).
+    const drnd = mulberry32((seed || 20251026) ^ 0xda75);
+    const WORK_DAYS = 22;
+    const pickDays = (n) => { const all = [...Array(WORK_DAYS).keys()]; for (let i = 0; i < n; i++) { const j = i + Math.floor(drnd() * (WORK_DAYS - i)); [all[i], all[j]] = [all[j], all[i]]; } return all.slice(0, n); };
+    const unionDays = (a, b) => (a && b ? new Set(pickDays(a).concat(pickDays(b))).size : Math.max(a, b));
     const r1 = (v) => Math.round(v * 10) / 10;
     const monthKey = (off) => { const i = START.y * 12 + START.m - 1 + off; return Math.floor(i / 12) + '-' + String((i % 12) + 1).padStart(2, '0'); };
     const calMonth = (off) => (START.m - 1 + off) % 12; // 0 = Jan
@@ -202,6 +207,7 @@ window.AID = window.AID || {};
           copilotAgentRequests: cpAgent, copilotChatRequests: cpChat, copilotTotalLinesAdded: cpLinesAdded, copilotAcceptedLinesAdded: cpAcceptedLines,
           copilotTotalLinesDeleted: Math.round(cpLinesAdded * 0.35), copilotAcceptedLinesDeleted: Math.round(cpAcceptedLines * 0.3),
           copilotTotalTabsShown: cpTabsShown, copilotTotalTabsAccepted: cpTabsAcc, copilotTotalApplies: cpApplies, copilotTotalAccepts: cpAccepts, copilotPrimaryModel: cpModel,
+          combinedActiveDays: unionDays(activeDays, cpDays),
         });
       }
       if (cpSpendTotal > 0) {

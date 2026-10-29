@@ -28,12 +28,13 @@ window.AID = window.AID || {};
       how: [
         'Cursor uses the plain columns (activeDays, totalRequests, …). Copilot uses the columns that start with copilot (copilotActiveDays, copilotTotalRequests, …).',
         'Cursor + Copilot adds the two tools together for requests, lines, tabs, and spend.',
-        'Cursor + Copilot active days = the higher of the two. The data has no daily detail, and a developer can use both tools on the same day. Thus days are never counted twice, and the true number of days with either tool can be higher.',
+        'Cursor + Copilot active days = combinedActiveDays: the days in the month with Cursor or Copilot activity, counted from daily data before the CSV is made. A day with both tools counts once. Example: Cursor on Monday and Wednesday, Copilot on Tuesday and Wednesday = 3 days.',
+        'If combinedActiveDays is missing or blank, the dashboard uses the higher of the two counts (2 in the example). That value is too low when the tools are used on different days. Days are never added together, because that counts shared days twice.',
         'Composer, Cmd+K, and Bugbot are Cursor features. The Copilot view does not show them. The combined view uses the Cursor values.',
         'Copilot has no rejects column. For the AI acceptance rate, Copilot rejects = copilotTotalApplies − copilotTotalAccepts.',
         'In the combined view, the primary model of a month is the model of the tool with more active days.',
         'The adoption month, the usage tiers, and the AI effect all use the active days of the selected tool. Jira and GitHub metrics do not change.',
-        'Cursor view: a developer who uses only Copilot is a non-adopter. The same is true for Cursor users in the Copilot view. Cursor + Copilot view: a developer adopts in the first month with {thr}+ days in either tool.',
+        'Cursor view: a developer who uses only Copilot is a non-adopter. The same is true for Cursor users in the Copilot view. Cursor + Copilot view: a developer adopts in the first month with {thr}+ combined active days. With combinedActiveDays, that can happen before either tool alone reaches {thr} days.',
         'In the Cursor or Copilot view, the AI effect leaves out every month with {thr}+ active days in the other tool. Before adoption, such a month is not a month without AI. After adoption, it mixes the two tools. Thus the effect compares the selected tool alone with no AI.',
         'The start month of a developer (for new-hire onboarding) uses both tools in every view, so the same months are left out in each view.',
       ],
@@ -282,7 +283,7 @@ window.AID = window.AID || {};
       short: 'The share of developers who used {toolAny} at least {thr} days (active) and at least {hi} days (heavy) in each month.',
       how: [
         'For each month: developers with {thr}+ {tool} active days ÷ all developers with data that month. The same for {hi}+ days.',
-        'Cursor + Copilot: the solid lines count a developer with {thr}+ days in either tool. The dashed lines show each tool on its own. One developer can be in both dashed lines, so they can add up to more than the solid line.',
+        'Cursor + Copilot: the solid lines use combined active days (a day with both tools counts once). The dashed lines show each tool on its own. One developer can be in both dashed lines, and a developer with fewer than {thr} days in each tool can still be in the solid line.',
         'New hires\' onboarding months are left out.',
         'The vertical line is the company rollout month.',
       ],
@@ -522,13 +523,15 @@ window.AID = window.AID || {};
     const end = ' in developer_monthly_metrics.csv, one value per developer per month.';
     if (!m.usage || tool === 'cursor' || (tool === 'both' && !cp)) return 'Column ' + key + end;
     if (tool === 'copilot') return cp ? 'Column ' + cp + end : 'Cursor only. Copilot has no matching column.';
-    return 'Columns ' + key + ' and ' + cp + end + (key === 'activeDays' ? ' The higher of the two is used.' : ' The two are added together.');
+    if (key === 'activeDays') return 'Column combinedActiveDays' + end + ' If it is blank: the higher of activeDays and ' + cp + '.';
+    return 'Columns ' + key + ' and ' + cp + end + ' The two are added together.';
   }
   function columnCell(key) {
     const m = AID.M[key];
     if (m.derived || !m.usage || AID.tool.key === 'cursor') return key;
     const cp = AID.COPILOT_KEYS.includes(key) ? AID.copilotKey(key) : null;
     if (AID.tool.key === 'copilot') return cp || '—';
+    if (key === 'activeDays') return 'combinedActiveDays';
     return cp ? key + ' + ' + cp : key;
   }
 

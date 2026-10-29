@@ -11,7 +11,7 @@ window.AID = window.AID || {};
   const METRICS = [
     // ---- AI usage (Cursor, Copilot, or both) ----
     { key: 'activeDays', label: '{tool} active days', short: 'Active days', usage: true, unit: 'days', better: 'neutral', empty: 'zero', desc: 'Days in the month with any {tool} activity.',
-      descBy: { both: 'The higher of Cursor active days and Copilot active days in the month. The data has no daily detail, so the days with either tool can be more.' } },
+      descBy: { both: 'Days in the month with Cursor or Copilot activity (combinedActiveDays). A day with both tools counts once. If that column is blank, the higher of Cursor and Copilot active days, which can be too low.' } },
     { key: 'totalRequests', label: 'AI requests', short: 'Requests', usage: true, unit: 'count', better: 'neutral', empty: 'zero', desc: 'All {tool} AI requests in the month.' },
     { key: 'agentRequests', label: 'Agent requests', short: 'Agent', usage: true, unit: 'count', better: 'neutral', empty: 'zero' },
     { key: 'composerRequests', label: 'Composer requests', short: 'Composer', usage: true, cursorOnly: true, unit: 'count', better: 'neutral', empty: 'zero' },

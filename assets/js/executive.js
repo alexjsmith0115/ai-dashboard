@@ -121,8 +121,11 @@ window.AID = window.AID || {};
         (fit.otherMonths ? ' ' + fit.otherMonths + ' developer-months with ' + ctx.thr + '+ ' + ctx.otherTool + ' active days are left out, so the effect compares ' + AID.tool.label + ' alone with no AI.' : ''),
     }));
 
-    // Right side: change by AI usage tier
-    const maxAbs = Math.max(0.01, ...tiers.map((x) => Math.abs(x.score || 0)));
+    // Right side: change by AI usage tier. The bars share one scale with zero marked: right = positive, left = negative.
+    // Color = better (blue) or worse (red), pale when not statistically clear, as in the group charts.
+    const vals = tiers.slice(1).map((x) => x.pct).filter((v) => v != null);
+    const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = Math.max(0.01, hi - lo);
+    const pos = (v) => ((v - lo) / span) * 100;
     const t = AID.charts.theme();
     const rows = tiers.map((x, i) => {
       if (i === 0) {
@@ -130,8 +133,8 @@ window.AID = window.AID || {};
           el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.devCount + ' developers · ' + (ctx.control === 'notyet' ? 'not used' : (ctx.control === 'never' ? 'the comparison group' : 'part of the comparison group') + (ctx.otherTool ? ' (months without ' + ctx.otherTool + ')' : '')) })),
           el('div.val', { text: '—', style: { color: 'var(--muted)' } }));
       }
-      const w = x.score != null ? (Math.abs(x.score) / maxAbs) * 100 : 0;
-      const bar = el('div', { style: { height: '8px', borderRadius: '4px', width: Math.max(2, w) + '%', background: t.tiers[i], marginTop: '5px' } });
+      const bar = el('div.tier-track', lo < 0 ? el('div.tier-zero', { style: { left: pos(0) + '%' } }) : null,
+        x.pct != null ? el('div.tier-bar', { style: { left: Math.min(pos(0), pos(x.pct)) + '%', width: Math.max(1, Math.abs(pos(x.pct) - pos(0))) + '%', background: changeColor(x, t) } }) : null);
       return el('div.score-row', { style: { gridTemplateColumns: 'minmax(0,1fr) auto' } },
         el('div', el('div.name', { text: x.tier }), el('div', { style: { fontSize: '11px', color: 'var(--muted)' }, text: x.n + ' developers' + (x.lo != null ? ' · ' + ciText(x) : '') }), bar),
         el('div.val', { text: x.pct != null ? F.pct(x.pct) : '—' }));
@@ -139,7 +142,7 @@ window.AID = window.AID || {};
     const right = el('div.verdict-side',
       el('div.card-title', el('p.verdict-q', { text: 'AI effect on ' + meta.short + ' by AI usage level' }), AID.help.button('m-tiers')),
       el('div.scorecard', rows),
-      el('p.method-note', { text: 'Usage level = average ' + AID.M.activeDays.label + ' per month in the after period.' }),
+      el('p.method-note', { text: 'Usage level = average ' + AID.M.activeDays.label + ' per month in the after period. Blue = better, red = worse' + (meta.better === 'down' ? ' (lower is better for this metric)' : '') + '. Pale = not statistically clear.' }),
       robustness(ctx, metric));
 
     return el('section.card.verdict', left, right);
@@ -302,7 +305,9 @@ window.AID = window.AID || {};
     ];
     // Both view: each tool on its own (dashed), so a move from one tool to the other is visible.
     if (both) series.push({ name: 'Cursor (' + ctx.thr + '+)', values: a.cursor, color: t.series[2], dash: [5, 4] }, { name: 'Copilot (' + ctx.thr + '+)', values: a.copilot, color: t.series[3], dash: [5, 4] });
-    if (both) c.box.before(el('p.chart-summary', { text: 'Either tool = ' + ctx.thr + '+ days with Cursor or with Copilot. Days are not added across tools, because one day can have both.' }));
+    if (both) c.box.before(el('p.chart-summary', { text: ctx.ds.tools.combined
+      ? 'Either tool = ' + ctx.thr + '+ days with Cursor or Copilot activity (combinedActiveDays). A day with both tools counts once, so a developer can reach ' + ctx.thr + ' days without ' + ctx.thr + ' days in one tool.'
+      : 'Either tool = ' + ctx.thr + '+ days in Cursor or in Copilot. The file has no combinedActiveDays column, so days with each tool on different days are not added together.' }));
     queueMicrotask(() => AID.charts.line(c.canvas, { labels: a.labels, series, pctAxis: true, marker: markerIdx >= 0 ? { index: markerIdx, label: 'AI rollout' } : null, endLabels: true }));
     const pctCol = (s) => ({ label: s.name, num: true, value: (r) => s.values[r.i], format: (v) => (v == null ? '—' : Math.round(v * 100) + '%') });
     c.setTable(() => table(

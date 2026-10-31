@@ -4,8 +4,8 @@ window.AID = window.AID || {};
 (function (AID) {
   'use strict';
 
-  const DEV_FIELDS = ['devId', 'squadId', 'email', 'name', 'orgLeader', 'orgName', 'department', 'manager', 'role', 'jobLevel', 'isIC', 'cursorUserId', 'jiraAccountId', 'githubLogin', 'primaryProject', 'primaryRepo', 'copilotUserId', 'copilotTotalSpend'];
-  const MET_FIELDS = ['devId', 'month', 'spendDollars', 'contractTotalSpend', 'activeDays', 'totalRequests', 'composerRequests', 'agentRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages', 'totalLinesAdded', 'acceptedLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts', 'totalRejects', 'primaryModel', 'storyPoints', 'throughput', 'thoughputWithSubtasks', 'storiesdone', 'bugsDone', 'tasksDone', 'subtasksDone', 'medianCycleDays', 'meanCycleDays', 'reopenedTickets', 'reopenRatePct', 'prsOpened', 'prsMerged', 'additions', 'deletions', 'changedFiles', 'medianTimeToMergeHours', 'jiraLinkedPrs', 'copilotSpendDollars', 'copilotContractTotalSpend', 'copilotActiveDays', 'copilotTotalRequests', 'copilotAgentRequests', 'copilotChatRequests', 'copilotTotalLinesAdded', 'copilotAcceptedLinesAdded', 'copilotTotalLinesDeleted', 'copilotAcceptedLinesDeleted', 'copilotTotalTabsShown', 'copilotTotalTabsAccepted', 'copilotTotalApplies', 'copilotTotalAccepts', 'copilotPrimaryModel', 'combinedActiveDays',
+  const DEV_FIELDS = ['devId', 'squadId', 'name', 'orgName', 'department', 'manager', 'role', 'jobLevel', 'isIC'];
+  const MET_FIELDS = ['devId', 'month', 'spendDollars', 'activeDays', 'totalRequests', 'composerRequests', 'agentRequests', 'chatRequests', 'cmdkUsages', 'bugbotUsages', 'acceptedLinesAdded', 'totalTabsShown', 'totalTabsAccepted', 'totalAccepts', 'totalRejects', 'primaryModel', 'storyPoints', 'throughput', 'thoughputWithSubtasks', 'storiesdone', 'bugsDone', 'tasksDone', 'subtasksDone', 'medianCycleDays', 'meanCycleDays', 'reopenedTickets', 'prsOpened', 'prsMerged', 'additions', 'deletions', 'changedFiles', 'medianTimeToMergeHours', 'jiraLinkedPrs', 'copilotSpendDollars', 'copilotActiveDays', 'copilotTotalRequests', 'copilotAgentRequests', 'copilotChatRequests', 'copilotAcceptedLinesAdded', 'copilotTotalTabsShown', 'copilotTotalTabsAccepted', 'copilotTotalApplies', 'copilotTotalAccepts', 'copilotPrimaryModel', 'combinedActiveDays',
     'medianPrSizeLines', 'churnedLines', 'prsReviewed', 'reviewCommentsGiven', 'medianTimeToFirstReviewHours'];
   const TEAM_FIELDS = ['squadId', 'month', 'bugsDiscovered', 'escapedBugs'];
 
@@ -98,13 +98,10 @@ window.AID = window.AID || {};
           for (const mem of members) {
             const id = 'D' + devNum++;
             const name = mem.ic ? personName() : manager;
-            const handle = name.toLowerCase().replace(/[^a-z]+/g, '.');
             devRows.push({
-              devId: id, squadId, email: handle + '@example.com', name, orgLeader: org.leader, orgName: org.name, department: domain,
+              devId: id, squadId, name, orgName: org.name, department: domain,
               manager: mem.ic ? manager : director, role: mem.ic ? 'Software Engineer' : 'Engineering Manager', jobLevel: mem.lv,
-              isIC: mem.ic ? 'true' : 'false', cursorUserId: 'cu_' + id.toLowerCase(), jiraAccountId: '5f' + (devNum * 7919).toString(16),
-              githubLogin: handle.replace(/\./g, '-'), primaryProject: domain.replace(/[^A-Za-z]/g, '').slice(0, 5).toUpperCase(), primaryRepo: repo,
-              copilotUserId: '', copilotTotalSpend: '',
+              isIC: mem.ic ? 'true' : 'false',
             });
             people.push({ id, org, lv: mem.lv, ic: mem.ic, teamEffect, dev: devRows[devRows.length - 1] });
           }
@@ -208,18 +205,16 @@ window.AID = window.AID || {};
         }
 
         metRows.push({
-          devId: p.id, month: monthKey(m), spendDollars: spend.toFixed(2), contractTotalSpend: '', activeDays, totalRequests: req,
-          composerRequests: composer, agentRequests: agent, chatRequests: chat, cmdkUsages: cmdk, bugbotUsages: bugbot,
-          totalLinesAdded, acceptedLinesAdded, totalLinesDeleted: Math.round(totalLinesAdded * 0.35), acceptedLinesDeleted: Math.round(acceptedLinesAdded * 0.3),
-          totalTabsShown: tabsShown, totalTabsAccepted: tabsAcc, totalApplies: applies, totalAccepts: accepts, totalRejects: applies - accepts, primaryModel: model,
+          devId: p.id, month: monthKey(m), spendDollars: spend.toFixed(2), activeDays, totalRequests: req,
+          composerRequests: composer, agentRequests: agent, chatRequests: chat, cmdkUsages: cmdk, bugbotUsages: bugbot, acceptedLinesAdded,
+          totalTabsShown: tabsShown, totalTabsAccepted: tabsAcc, totalAccepts: accepts, totalRejects: applies - accepts, primaryModel: model,
           storyPoints, throughput, thoughputWithSubtasks: throughput + subtasks, storiesdone: stories, bugsDone: bugs, tasksDone: Math.max(0, throughput - stories - bugs),
           subtasksDone: subtasks, medianCycleDays: cycle, meanCycleDays: cycle === '' ? '' : r1(cycle * (1.25 + 0.2 * rnd())),
           reopenedTickets: reopenRate === '' ? '' : Math.round((throughput * reopenRate) / 100),
           prsOpened, prsMerged, additions, deletions: Math.round(additions * (0.3 + 0.2 * rnd())), changedFiles: Math.round(prsMerged * (4 + 4 * rnd())),
           medianTimeToMergeHours: ttm, jiraLinkedPrs: Math.round(prsMerged * (0.7 + 0.25 * rnd())),
-          copilotSpendDollars: cpSpend.toFixed(2), copilotContractTotalSpend: '', copilotActiveDays: cpDays, copilotTotalRequests: cpReq,
-          copilotAgentRequests: cpAgent, copilotChatRequests: cpChat, copilotTotalLinesAdded: cpLinesAdded, copilotAcceptedLinesAdded: cpAcceptedLines,
-          copilotTotalLinesDeleted: Math.round(cpLinesAdded * 0.35), copilotAcceptedLinesDeleted: Math.round(cpAcceptedLines * 0.3),
+          copilotSpendDollars: cpSpend.toFixed(2), copilotActiveDays: cpDays, copilotTotalRequests: cpReq,
+          copilotAgentRequests: cpAgent, copilotChatRequests: cpChat, copilotAcceptedLinesAdded: cpAcceptedLines,
           copilotTotalTabsShown: cpTabsShown, copilotTotalTabsAccepted: cpTabsAcc, copilotTotalApplies: cpApplies, copilotTotalAccepts: cpAccepts, copilotPrimaryModel: cpModel,
           combinedActiveDays: unionDays(activeDays, cpDays),
           // AI makes PRs larger and adds rework (more where quality > 0). Review load grows as the whole company adopts.
@@ -229,20 +224,6 @@ window.AID = window.AID || {};
           medianTimeToFirstReviewHours: prsMerged ? r1(clamp(5 * (1 + 0.5 * intensity * maturity) * Math.exp(0.4 * xnormal()), 0.2, 120)) : '',
         });
       }
-      if (cpSpendTotal > 0) {
-        p.dev.copilotUserId = 'cp_' + p.id.toLowerCase();
-        p.dev.copilotTotalSpend = cpSpendTotal.toFixed(2);
-      }
-    }
-    // contractTotalSpend: company-wide spend for the month, repeated on each row (as an aggregate field usually is).
-    const byMonth = {}, cpByMonth = {};
-    for (const r of metRows) {
-      byMonth[r.month] = (byMonth[r.month] || 0) + Number(r.spendDollars);
-      cpByMonth[r.month] = (cpByMonth[r.month] || 0) + Number(r.copilotSpendDollars);
-    }
-    for (const r of metRows) {
-      r.contractTotalSpend = byMonth[r.month].toFixed(2);
-      r.copilotContractTotalSpend = cpByMonth[r.month].toFixed(2);
     }
 
     // Team bugs: bugs found in a month come from the team's PRs of that month and the two before it.

@@ -12,7 +12,7 @@ window.AID = window.AID || {};
     ['email', 'email'], ['cursoruserid', 'cursorUserId'], ['jiraaccountid', 'jiraAccountId'], ['githublogin', 'githubLogin'],
   ];
   // Raw AI usage columns that are not in the metric catalog, but feed derived metrics or the combined view.
-  const USAGE_EXTRA = ['contractTotalSpend', 'totalLinesAdded', 'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalApplies', 'totalAccepts', 'totalRejects'];
+  const USAGE_EXTRA = ['totalTabsShown', 'totalAccepts', 'totalRejects'];
   const MONTH_CANDIDATES = ['month', 'period', 'yearmonth', 'year_month', 'monthstart', 'month_start', 'reportmonth', 'date'];
   const MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 
@@ -85,10 +85,9 @@ window.AID = window.AID || {};
   function buildDevelopers(parsed, warnings) {
     const F = (name) => findField(parsed.fields, name.toLowerCase());
     const col = {
-      id: F('devId'), squad: F('squadId'), email: F('email'), name: F('name'), orgLeader: F('orgLeader'),
+      id: F('devId'), squad: F('squadId'), email: F('email'), name: F('name'),
       org: F('orgName'), dept: F('department'), manager: F('manager'), role: F('role'), level: F('jobLevel'),
-      isIC: F('isIC'), cursor: F('cursorUserId'), jira: F('jiraAccountId'), gh: F('githubLogin'),
-      project: F('primaryProject'), repo: F('primaryRepo'), copilot: F('copilotUserId'), copilotSpend: F('copilotTotalSpend'),
+      isIC: F('isIC'), cursor: F('cursorUserId'), jira: F('jiraAccountId'), gh: F('githubLogin'), copilot: F('copilotUserId'),
     };
     if (!col.id) throw new Error('developers.csv has no devId column.');
     const devs = [];
@@ -105,7 +104,6 @@ window.AID = window.AID || {};
         name: g(col.name, id),
         email: g(col.email, ''),
         org: g(col.org, '(no org)'),
-        orgLeader: g(col.orgLeader, ''),
         domain: g(col.dept, '(no domain)'),
         team: g(col.squad, '(no team)'),
         manager: g(col.manager, ''),
@@ -115,10 +113,7 @@ window.AID = window.AID || {};
         cursorUserId: g(col.cursor, ''),
         jiraAccountId: g(col.jira, ''),
         githubLogin: g(col.gh, ''),
-        project: g(col.project, ''),
-        repo: g(col.repo, ''),
         copilotUserId: g(col.copilot, ''),
-        copilotTotalSpend: col.copilotSpend ? num(r[col.copilotSpend]) : null,
         rows: [],
       });
     }

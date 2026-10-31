@@ -66,8 +66,8 @@ window.AID = window.AID || {};
     { key: 'copilot', label: 'Copilot', any: 'Copilot' },
     { key: 'both', label: 'Cursor + Copilot', short: 'Both', any: 'Cursor or Copilot' },
   ];
-  const COPILOT_KEYS = ['spendDollars', 'contractTotalSpend', 'activeDays', 'totalRequests', 'agentRequests', 'chatRequests', 'totalLinesAdded', 'acceptedLinesAdded',
-    'totalLinesDeleted', 'acceptedLinesDeleted', 'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts'];
+  const COPILOT_KEYS = ['spendDollars', 'activeDays', 'totalRequests', 'agentRequests', 'chatRequests', 'acceptedLinesAdded',
+    'totalTabsShown', 'totalTabsAccepted', 'totalApplies', 'totalAccepts'];
   const copilotKey = (k) => 'copilot' + k[0].toUpperCase() + k.slice(1);
 
   function setTool(key) {

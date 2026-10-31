@@ -32,7 +32,9 @@ The demo has about 500 synthetic developers in 3 orgs. **Download demo CSVs** gi
 | `manager` | Shown in the team tables |
 | `isIC` | The "ICs only" filter (`true`/`false`, `yes`/`no`, `1`/`0`) |
 
-**developer_monthly_metrics.csv**: one row per developer per month. The file needs two columns that the schema does not show:
+The ingestion script owns the mapping from tool accounts (Cursor, Copilot, Jira, GitHub) to `devId`. Export `devId` only, so the dashboard never sees emails or account IDs. `name` is optional; the tables show `devId` without it.
+
+**developer_monthly_metrics.csv**: one row per developer per month. The first two columns are the keys:
 
 - A developer key: `devId` (preferred), `email`, `cursorUserId`, `jiraAccountId`, or `githubLogin`. The dashboard matches it to the same column in `developers.csv`. The match ignores case.
 - A month: `month`, `period`, `yearMonth`, `monthStart`, or `date`. All of these formats work: `2025-03`, `2025-03-01`, `3/1/2025`, `03/2025`, `Mar 2025`, `202503`.

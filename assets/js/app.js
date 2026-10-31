@@ -11,7 +11,7 @@ window.AID = window.AID || {};
     showSettings: false,
     tool: 'cursor',
     filters: { org: '', domain: '', team: '', level: '', icOnly: true, from: '', to: '' },
-    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12, tierBasis: 'days', logScale: 'times' },
+    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12, tierBasis: 'days', logScale: 'times', shrink: true },
     exec: { metric: 'prsMerged', groupBy: 'org', crossBy: 'level', crossMode: 'did' },
     explore: {
       trendMetric: 'prsMerged', trendGroup: 'tier', trendX: 'calendar', trendAgg: 'mean',
@@ -212,6 +212,8 @@ window.AID = window.AID || {};
       numField('Minimum developers per group', s.minGroup, 2, 30, (n) => setS({ minGroup: n }), 'Groups and job level × usage cells with fewer developers (with enough months before and after) are hidden from charts and flagged "Small sample". Small groups give wide, unreliable confidence intervals.'),
       el('div', select('Log scale for the AI effect', [{ value: 'times', label: 'Times only (cycle time, hours)' }, { value: 'all', label: 'Times and counts' }, { value: 'none', label: 'None' }], s.logScale || 'times', (v) => setS({ logScale: v })),
         el('p.help', { text: 'On the log scale the effect is a ratio for the typical developer, and one very long ticket or one huge month cannot dominate. Times are always positive, so log is their natural scale. Counts use log(value + 1) because of zero months, which adds a small dependence on the +1. Rates are never logged.' })),
+      el('div', select('Group estimates', [{ value: 'shrink', label: 'Pulled toward the parent group (recommended)' }, { value: 'raw', label: 'Raw' }], s.shrink === false ? 'raw' : 'shrink', (v) => setS({ shrink: v !== 'raw' })),
+        el('p.help', { text: 'For the "Which groups" section only. A noisy team\'s estimate moves toward its domain in proportion to its own noise; a precise one stays. The table shows the raw value next to it. The headline and tiles never move.' })),
       el('div', select('Usage tier based on', [{ value: 'days', label: 'Active days' }, { value: 'spend', label: 'Spend' }], s.tierBasis, (v) => setS({ tierBasis: v })),
         el('p.help', { text: s.tierBasis === 'spend'
           ? 'Low and High = the developers split at the median of average ' + AID.M.spendDollars.label + ' per month in the after period' + (ctx && ctx.spendCuts ? ' (' + AID.fmt.value(ctx.spendCuts[0], 'usd') + ')' : '') + '. Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.' + (ctx && ctx.tierBasis !== 'spend' ? ' The data has no spend values, so active days are used.' : '')

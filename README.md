@@ -112,6 +112,8 @@ The verdict shows the headline effect with all three groups. If the results are 
 
 **Groups.** Groups with fewer developers who have before/after data than the *Minimum developers per group* setting (default 5) are flagged "Small sample". The executive charts do not rank them.
 
+**Group estimates are pulled toward the parent group** (empirical Bayes shrinkage, *Which groups are most impacted?* only). A team's estimate moves toward its domain's pooled estimate by B = its own noise variance ÷ (its own noise variance + the real spread between teams). A precise team keeps its value; a noisy team moves most of the way. The spread between teams comes from the data, so with no real differences every team goes to the pooled value, and with large real differences nothing moves. The parent is the team's domain (or the domain's org) when it has 3+ groups, else all groups. The table shows the raw estimate and the pull. Settings (*Group estimates*) turns it off. The headline, tiles, tiers, and event study never move.
+
 ## Dashboards
 
 **Executive summary**

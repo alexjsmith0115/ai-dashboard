@@ -355,6 +355,7 @@ window.AID = window.AID || {};
       how: [
         'Each bar is the AI effect averaged over the adopters in that group. The model itself is fitted on all developers.',
         'The % divides by the average expected value for all adopters, not the group\'s own, so groups compare on one scale.',
+        'Each group\'s estimate is pulled toward its parent group (domain for teams, org for domains, all groups otherwise) in proportion to its own noise: a precise group keeps its value, a noisy group moves most of the way. The pull strength comes from the data: the spread between groups beyond their own noise. With no real differences every group goes to the pooled value; with large real differences nothing moves. The table shows the raw estimate and the pull. Settings (Group estimates) turns it off. The headline, tiles, tiers, and event study never move.',
         'Groups with fewer than {minGroup} adopters with enough data, or with a 95% CI wider than 200 pts, are left out of the chart and the ranking. If no group is left, the chart is empty.',
         'With more than 20 groups, the chart shows the top 10 and the bottom 10. The table lists all of them.',
       ],
@@ -362,7 +363,10 @@ window.AID = window.AID || {};
         'Blue = better, red = worse. Pale bars are not statistically clear.',
         'Key findings name the largest and smallest effect, and say whether groups with more adoption got a larger effect.',
       ],
-      watch: ['Small teams have wide CIs. A team at the top or bottom of the ranking can be there by chance. Check its CI in the table.'],
+      watch: [
+        'Small teams have wide CIs. A team at the top or bottom of the ranking can be there by chance. Check its CI in the table.',
+        'The pull toward the parent is a trade: a little bias toward the parent for much less noise. A team that is truly different from its domain, with few adopters, is pulled toward the domain too. The raw column shows how far.',
+      ],
       see: ['m-did', 'm-samples'],
     },
     {

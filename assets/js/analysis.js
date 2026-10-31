@@ -446,6 +446,9 @@ window.AID = window.AID || {};
 
     // DiD effect per group, in the same shape as compareByGroup().
     // lowSample = too few developers, or a CI too wide to read (wide). Charts leave these groups out.
+    // With settings.shrink (default on), each group's estimate is pulled toward its parent (shrinkGroups). The raw
+    // estimate stays in r.raw. The headline, tiles, tiers, and event study never shrink.
+    const shrink = s.shrink !== false;
     function didByGroup(metric, groupKey) {
       const base = did(metric).before;
       const byG = new Map();
@@ -460,12 +463,44 @@ window.AID = window.AID || {};
         const sample = list[0];
         out.push(Object.assign(c, {
           group: g, devCount: list.length, adoption: adoptionRate(list),
-          avgActiveDays: mean(list.map(usageAfter)), lowSample: c.n < minGroup || !!c.wide,
+          avgActiveDays: mean(list.map(usageAfter)),
           parent: groupKey === 'team' ? sample.domain : groupKey === 'domain' ? sample.org : '',
           manager: groupKey === 'team' ? sample.manager : '',
         }));
       }
+      if (shrink) shrinkGroups(out);
+      for (const r of out) r.lowSample = r.n < minGroup || !!r.wide;
       return out;
+    }
+
+    // Empirical Bayes shrinkage for many small groups. A group's estimate moves toward its parent's pooled estimate by
+    // B = its own noise variance ÷ (its own noise variance + the real spread between groups). A precise group keeps its
+    // value; a noisy group moves most of the way. The spread between groups (tau2) comes from the data (DerSimonian–Laird),
+    // so with no real differences every group goes to the pooled value, and with large real differences nothing moves.
+    // The parent is the group's own parent (domain for teams, org for domains) when it has 3+ groups, else all groups.
+    function shrinkGroups(rows) {
+      const est = rows.filter((r) => isNum(r.md) && r.se > 0);
+      if (est.length < 3) return;
+      const w = (r) => 1 / (r.se * r.se);
+      const pooled = (rs) => { let sw = 0, sx = 0; for (const r of rs) { sw += w(r); sx += w(r) * r.md; } return { mu: sx / sw, sw }; };
+      const all = pooled(est);
+      let Q = 0, sw2 = 0;
+      for (const r of est) { Q += w(r) * (r.md - all.mu) ** 2; sw2 += w(r) ** 2; }
+      const tau2 = Math.max(0, (Q - (est.length - 1)) / (all.sw - sw2 / all.sw));
+      const byParent = new Map();
+      for (const r of est) { if (!byParent.has(r.parent)) byParent.set(r.parent, []); byParent.get(r.parent).push(r); }
+      for (const r of est) {
+        const sib = byParent.get(r.parent), useParent = !!r.parent && sib.length >= 3;
+        const p = useParent ? pooled(sib) : all;
+        const v = r.se * r.se, B = v / (v + tau2);
+        const md = (1 - B) * r.md + B * p.mu;
+        const se = Math.sqrt((tau2 > 0 ? 1 / (1 / v + 1 / tau2) : 0) + (B * B) / p.sw);
+        r.raw = { pct: r.pct, lo: r.lo, hi: r.hi, sig: r.sig, wide: r.wide, status: r.status, score: r.score };
+        r.shrink = B;
+        r.shrinkTo = useParent ? r.parent : 'all groups';
+        r.md = md; r.se = se;
+        applyCI(r, md, tCrit(r.df) * se);
+      }
     }
 
     function groupValues(key, devList) {
@@ -774,7 +809,7 @@ window.AID = window.AID || {};
     const windowOf = (p) => { const m = allRowsInRange.filter((r) => phaseOf(r) === p).map((r) => r.mi); return m.length ? [Math.min(...m), Math.max(...m)] : null; };
 
     return {
-      ds, state, devs, months, onboarding, minGroup, control, CONTROLS, otherTool, tierBasis, spendCuts, spendAfter, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
+      ds, state, devs, months, onboarding, minGroup, control, CONTROLS, otherTool, tierBasis, spendCuts, logScale, logOf, shrink, spendAfter, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
       splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, did, didFit, didByGroup, eventStudy, compareCross, groupValues,
       teamEffect, teamSeries, hasTeams: !!ds.teams,
       adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,

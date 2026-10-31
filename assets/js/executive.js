@@ -436,6 +436,12 @@ window.AID = window.AID || {};
       ins.appendChild(el('li', el('span', 'Across ' + levelLabel + 's, adoption and improvement are ', el('strong', { text: s + (corr.r >= 0 ? ' linked' : ' inversely linked') }), ' (r = ' + corr.r.toFixed(2) + '). ' +
         (corr.r >= 0.3 ? 'Groups that use AI more got a larger effect.' : corr.r <= -0.3 ? 'Higher adoption did not bring larger gains.' : 'Adoption alone does not explain the differences.'))));
     }
+    const shrunk = rows.filter((r) => r.raw);
+    if (shrunk.length) {
+      const moved = shrunk.filter((r) => r.shrink >= 0.5).length;
+      ins.appendChild(el('li', el('span', 'Each ' + levelLabel + '\'s estimate is pulled toward its ' + (level === 'team' ? 'domain' : level === 'domain' ? 'org' : 'parent group') + ' in proportion to its own noise. ',
+        el('strong', { text: moved + ' of ' + shrunk.length }), ' moved more than half way. The table shows the raw estimate next to the pulled one. Settings turns this off.')));
+    }
     const small = rows.filter((r) => r.n < ctx.minGroup).length, wide = rows.length - reliable.length - small;
     if (small) ins.appendChild(el('li', el('span', { text: small + ' ' + levelLabel + (small > 1 ? 's have' : ' has') + ' fewer than ' + ctx.minGroup + ' adopters with months before and after adoption. They are left out of the chart and ranking, and shown pale in the table.' })));
     if (wide) ins.appendChild(el('li', el('span', { text: wide + ' ' + levelLabel + (wide > 1 ? 's have' : ' has') + ' a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts, which is too uncertain to read. They are left out of the chart and ranking, and shown pale in the table.' })));
@@ -462,7 +468,7 @@ window.AID = window.AID || {};
     if (ranked.length) queueMicrotask(() => AID.charts.bars(barCard.canvas, {
       labels: shown.map((r) => r.group), values: shown.map((r) => r.pct), horizontal: true,
       colors: shown.map((r) => changeColor(r, t)), axisFmt: (v) => Math.round(v * 100) + '%', valueFmt: (v) => F.pct(v, 0),
-      tooltipLines: (i) => { const r = shown[i]; return [F.metric(r.after, metric) + ' actual vs ' + F.metric(r.before, metric) + ' expected', ciText(r), r.n + ' developers · ' + Math.round((r.adoption || 0) * 100) + '% adoption']; },
+      tooltipLines: (i) => { const r = shown[i]; return [F.metric(r.after, metric) + ' actual vs ' + F.metric(r.before, metric) + ' expected', ciText(r), r.n + ' developers · ' + Math.round((r.adoption || 0) * 100) + '% adoption'].concat(r.raw ? ['Raw ' + F.pct(r.raw.pct) + ' (' + F.pct(r.raw.lo, 0) + ' to ' + F.pct(r.raw.hi, 0) + '), pulled ' + Math.round(r.shrink * 100) + '% toward ' + r.shrinkTo] : []); },
     }));
     barCard.setTable(() => groupTable(rows, metric, level));
 
@@ -496,11 +502,15 @@ window.AID = window.AID || {};
     cols.push(
       { label: 'Adopters', num: true, value: (r) => r.n, title: 'Adopters with enough months before and after adoption' },
       { label: 'Adoption', num: true, value: (r) => r.adoption, format: (v) => (v == null ? '—' : Math.round(v * 100) + '%') },
-      { label: 'Avg active days', num: true, value: (r) => r.avgActiveDays, format: (v) => F.value(v, 'count') },
+      { label: 'Active d/mo', num: true, value: (r) => r.avgActiveDays, format: (v) => F.value(v, 'count'), title: 'Average active days per month in the after period' },
       { label: 'Expected', num: true, value: (r) => r.before, format: (v) => F.metric(v, metric, { short: true }) },
       { label: 'Actual', num: true, value: (r) => r.after, format: (v) => F.metric(v, metric, { short: true }) },
-      { label: 'AI effect', num: true, value: (r) => r.pct, sortValue: (r) => r.score, format: (v) => F.pct(v) },
-      { label: '95% CI', num: true, value: (r) => r.lo, format: (v, r) => (r.lo == null ? '—' : F.pct(r.lo, 0) + ' to ' + F.pct(r.hi, 0)) },
+      { label: 'AI effect', num: true, value: (r) => r.pct, sortValue: (r) => r.score, format: (v) => F.pct(v), title: rows.some((r) => r.raw) ? 'Pulled toward the parent group in proportion to the group\'s own noise' : '' },
+      { label: '95% CI', num: true, value: (r) => r.lo, format: (v, r) => (r.lo == null ? '—' : F.pct(r.lo, 0) + ' to ' + F.pct(r.hi, 0)) });
+    if (rows.some((r) => r.raw)) cols.push(
+      { label: 'Raw', num: true, value: (r) => (r.raw ? r.raw.pct : null), format: (v, r) => (r.raw ? F.pct(r.raw.pct) : '—'), title: 'Before the pull toward the parent group. Its 95% CI is in the bar tooltip.' },
+      { label: 'Pulled', num: true, value: (r) => r.shrink, format: (v, r) => (r.shrink == null ? '—' : Math.round(r.shrink * 100) + '%'), title: 'Share of the distance to the parent group that the estimate moved' });
+    cols.push(
       { label: 'Status', value: (r) => r.status, cell: (r) => (r.lowSample ? el('span.chip', icon('warn'), r.wide ? 'Too uncertain' : 'Small sample') : statusChip(r)) });
     return table(cols, rows, { sortCol: cols.findIndex((c) => c.label === 'AI effect'), sortDir: -1, rowClass: (r) => (r.lowSample ? 'muted' : '') });
   }

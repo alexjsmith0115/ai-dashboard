@@ -157,8 +157,9 @@ window.AID = window.AID || {};
     ds.hasModel = tool === 'copilot' ? ds.models.copilot : tool === 'both' ? ds.models.cursor || ds.models.copilot : ds.models.cursor;
   }
 
-  // Outlier handling for the skewed per-PR medians (metrics with trim: true): time to merge, PR size, time to first review.
-  // s.minPrs: a developer-month with fewer merged PRs than this has no value (its median is 1 or 2 PRs, not a typical PR).
+  // Outlier handling for the skewed medians (metrics with trim: true): cycle time, time to merge, PR size, time to first review.
+  // s.minPrs: for a per-PR median (volume prsMerged), a developer-month with fewer merged PRs than this has no value
+  // (its median is 1 or 2 PRs, not a typical PR).
   // s.outlierCap: 'p99' | 'p95' | 'none'. A value above that percentile is set to the percentile. The cutoff comes from
   // every developer-month in the data (before and after adoption together, all filters ignored), so it cannot make or hide
   // an AI effect, and a filter does not move it. The row stays, so counts and volume weights do not change.
@@ -176,7 +177,7 @@ window.AID = window.AID || {};
       const vals = [];
       for (const r of ds.rows) {
         let y = r.raw[k];
-        if (isNum(y) && minPrs > 1 && !(r.raw[m.volume] >= minPrs)) { y = null; dropped++; }
+        if (isNum(y) && minPrs > 1 && m.volume === 'prsMerged' && !(r.raw[m.volume] >= minPrs)) { y = null; dropped++; }
         r.v[k] = isNum(y) ? y : null;
         if (isNum(y)) vals.push(y);
       }

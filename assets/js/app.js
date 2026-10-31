@@ -211,9 +211,9 @@ window.AID = window.AID || {};
       numField('Ramp-up months to skip', s.ramp, 0, 6, (n) => setS({ ramp: n }), 'Months right after the split that count as neither before nor after.'),
       numField('New-hire onboarding months to skip', s.onboard, 0, 12, (n) => setS({ onboard: n }), 'A new hire is a developer whose first month of work is after the first month in the data. Their first months are left out of all results.'),
       numField('Minimum developers per group', s.minGroup, 2, 30, (n) => setS({ minGroup: n }), 'Groups and job level × usage cells with fewer developers (with enough months before and after) are hidden from charts and flagged "Small sample". Small groups give wide, unreliable confidence intervals.'),
-      el('div', select('Cap extreme PR values', [{ value: 'p99', label: '99th percentile' }, { value: 'p95', label: '95th percentile' }, { value: 'none', label: 'No cap' }], s.outlierCap || 'p99', (v) => setS({ outlierCap: v })),
-        el('p.help', { text: 'For ' + trimLabels() + '. A developer-month above the percentile is set to the percentile, so one huge or very slow PR cannot skew the results. The cutoff uses all months, before and after adoption together.' + capNote() })),
-      numField('Minimum merged PRs for a PR median', s.minPrs || 1, 1, 10, (n) => setS({ minPrs: n }), 'For ' + trimLabels() + '. A developer-month with fewer merged PRs has no value: its median is one or two PRs, not a typical PR. 1 = use every month.' + dropNote()),
+      el('div', select('Cap extreme values', [{ value: 'p99', label: '99th percentile' }, { value: 'p95', label: '95th percentile' }, { value: 'none', label: 'No cap' }], s.outlierCap || 'p99', (v) => setS({ outlierCap: v })),
+        el('p.help', { text: 'For ' + trimLabels() + '. A developer-month above the percentile is set to the percentile, so one huge PR or one very slow PR or ticket cannot skew the results. The cutoff uses all months, before and after adoption together.' + capNote() })),
+      numField('Minimum merged PRs for a PR median', s.minPrs || 1, 1, 10, (n) => setS({ minPrs: n }), 'For ' + trimLabels(true) + '. A developer-month with fewer merged PRs has no value: its median is one or two PRs, not a typical PR. 1 = use every month.' + dropNote()),
       el('div', select('Log scale for the AI effect', [{ value: 'times', label: 'Times and PR size' }, { value: 'all', label: 'Times, PR size, and counts' }, { value: 'none', label: 'None' }], s.logScale || 'times', (v) => setS({ logScale: v })),
         el('p.help', { text: 'On the log scale the effect is a ratio for the typical developer, and one very long ticket or one huge month cannot dominate. Times and PR size are always positive, so log is their natural scale. Counts use log(value + 1) because of zero months, which adds a small dependence on the +1. Rates are never logged.' })),
       el('div', select('Group estimates', [{ value: 'shrink', label: 'Pulled toward the parent group (recommended)' }, { value: 'raw', label: 'Raw' }], s.shrink === false ? 'raw' : 'shrink', (v) => setS({ shrink: v !== 'raw' })),
@@ -228,13 +228,13 @@ window.AID = window.AID || {};
 
   // Labels and notes for the outlier settings, from the cutoffs in dataset.caps (AID.data.applyOutliers).
   const trimMetrics = () => AID.METRICS.filter((m) => m.trim && dataset && dataset.caps && dataset.caps.get(m.key).n);
-  const trimLabels = () => (trimMetrics().map((m) => m.label.charAt(0).toLowerCase() + m.label.slice(1)).join(', ') || 'the per-PR medians');
+  const trimLabels = (prOnly) => (trimMetrics().filter((m) => !prOnly || m.volume === 'prsMerged').map((m) => m.label.charAt(0).toLowerCase() + m.label.slice(1)).join(', ') || 'the per-PR medians');
   function capNote() {
     const parts = trimMetrics().map((m) => { const c = dataset.caps.get(m.key); return c.cut == null ? null : m.short + ' ' + AID.fmt.value(c.cut, m.unit) + (m.unit === 'count' ? ' lines' : '') + ' (' + c.capped + ' months)'; }).filter(Boolean);
     return parts.length ? ' Current cutoffs: ' + parts.join(', ') + '.' : '';
   }
   function dropNote() {
-    const parts = trimMetrics().map((m) => { const c = dataset.caps.get(m.key); return c.dropped ? m.short + ' ' + c.dropped : null; }).filter(Boolean);
+    const parts = trimMetrics().filter((m) => m.volume === 'prsMerged').map((m) => { const c = dataset.caps.get(m.key); return c.dropped ? m.short + ' ' + c.dropped : null; }).filter(Boolean);
     return parts.length ? ' Months left out: ' + parts.join(', ') + '.' : '';
   }
 

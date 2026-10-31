@@ -10,7 +10,8 @@ window.AID = window.AID || {};
   // cursorOnly: Cursor has the feature, Copilot does not.
   // volume: for a median or rate, the count it is measured over. The AI effect weights a developer's months by it,
   // so a median from 1 issue counts less than one from 30 in that developer's own average.
-  // trim: a skewed per-PR median. Settings can cap its extreme developer-months and drop months with few PRs (AID.data.applyOutliers).
+  // trim: a skewed median. Settings can cap its extreme developer-months (AID.data.applyOutliers). A per-PR median
+  // (volume prsMerged) can also drop the months with few merged PRs.
   // log: fitted on the log scale for the AI effect, like a time.
   const METRICS = [
     // ---- AI usage (Cursor, Copilot, or both) ----
@@ -37,7 +38,7 @@ window.AID = window.AID || {};
     { key: 'bugsDone', label: 'Bugs done', short: 'Bugs', source: 'Jira', unit: 'count', better: 'up' },
     { key: 'tasksDone', label: 'Tasks done', short: 'Tasks', source: 'Jira', unit: 'count', better: 'up' },
     { key: 'subtasksDone', label: 'Subtasks done', short: 'Subtasks', source: 'Jira', unit: 'count', better: 'up' },
-    { key: 'medianCycleDays', label: 'Median cycle time', short: 'Cycle time', source: 'Jira', unit: 'days', better: 'down', volume: 'throughput', desc: 'Median days from In Progress to Done.' },
+    { key: 'medianCycleDays', label: 'Median cycle time', short: 'Cycle time', source: 'Jira', unit: 'days', better: 'down', volume: 'throughput', trim: true, desc: 'Median days from In Progress to Done.' },
     { key: 'meanCycleDays', label: 'Mean cycle time', short: 'Mean cycle', source: 'Jira', unit: 'days', better: 'down' },
     { key: 'reopenedTickets', label: 'Reopened tickets', short: 'Reopened', source: 'Jira', unit: 'count', better: 'down' },
     { key: 'reopenRatePct', label: 'Reopen rate', short: 'Reopen %', source: 'Jira', unit: 'pct', better: 'down', derived: true, volume: 'throughput', desc: 'reopenedTickets ÷ throughput, capped at 100%. Used as the quality guardrail.' },

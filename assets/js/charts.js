@@ -14,7 +14,7 @@ window.AID = window.AID || {};
       divPos: css('--div-pos'), divNeg: css('--div-neg'), divMid: css('--div-mid'),
       ord: [css('--ord-1'), css('--ord-2'), css('--ord-3')],
       // Usage tiers: non-adopters in neutral gray (the comparison group), then the ordinal blue ramp.
-      tiers: [css('--tier-none'), css('--ord-1'), css('--ord-2'), css('--ord-3')],
+      tiers: [css('--tier-none'), css('--ord-1'), css('--ord-3')],
       font: css('--font') || 'system-ui, sans-serif',
     };
   }

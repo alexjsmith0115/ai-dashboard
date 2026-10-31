@@ -210,7 +210,7 @@ window.AID = window.AID || {};
     const groups = [...new Set(res[0].map((r) => r.group))];
     const head = res[0].reduce((acc, r) => { acc[r.group] = r; return acc; }, {});
     if (level === 'levelTier') {
-      // Keep each level's tiers together, in tier order: SDE1 · Non-adopter, SDE1 · Light, …
+      // Keep each level's tiers together, in tier order: SDE1 · Non-adopter, SDE1 · Low, …
       const ti = (g) => ctx.TIER_SHORT.indexOf(g.split(' · ')[1]);
       groups.sort((a, b) => a.split(' · ')[0].localeCompare(b.split(' · ')[0], undefined, { numeric: true }) || ti(a) - ti(b));
     } else groups.sort((a, b) => (head[b].score ?? -9) - (head[a].score ?? -9));
@@ -263,7 +263,7 @@ window.AID = window.AID || {};
       ],
     });
     const d = ctx.doseResponse(st.doseMetric, st.doseAfter);
-    const ramp = [t.tiers[0], t.tiers[1], t.tiers[2], t.tiers[2], t.tiers[3]];
+    const ramp = [t.tiers[0], t.tiers[1], t.tiers[1], t.tiers[2], t.tiers[2]];
     queueMicrotask(() => AID.charts.bars(c.canvas, {
       labels: d.map((b) => b.label), values: d.map((b) => b.mean), colors: d.map((b, i) => ramp[i]), unit: meta.unit,
       valueFmt: (v) => F.metric(v, st.doseMetric, { short: true }),
@@ -317,12 +317,12 @@ window.AID = window.AID || {};
       const b = bins.find((x) => u >= x.lo && u < x.hi);
       if (b) b.n++;
     }
-    const colorOf = (b) => t.tiers[b.lo >= ctx.hi ? 3 : b.lo >= ctx.thr ? 2 : b.lo >= AID.analysis.NON_ADOPTER_DAYS ? 1 : 0];
+    const colorOf = (b) => t.tiers[b.lo >= ctx.hi ? 2 : b.lo >= AID.analysis.NON_ADOPTER_DAYS ? 1 : 0];
     queueMicrotask(() => AID.charts.bars(c.canvas, {
       labels: bins.map((b) => b.label), values: bins.map((b) => b.n), colors: bins.map(colorOf), unit: 'count',
       valueFmt: (v) => (v ? String(v) : ''), tooltipLines: () => ['developers'],
     }));
-    c.foot.textContent = 'X axis: average active days per month. Color = usage tier (gray = non-adopter, then light / medium / heavy). Change the tier thresholds in Settings.';
+    c.foot.textContent = 'X axis: average active days per month. Color = usage tier (gray = non-adopter, then low / high). Change the tier thresholds in Settings.';
     c.setTable(() => table([{ label: 'Avg active days', value: (b) => b.label, sortable: false }, { label: 'Developers', num: true, value: (b) => b.n }], bins, { sortable: false }));
     return c.el;
   }
@@ -338,7 +338,7 @@ window.AID = window.AID || {};
     const top = sorted[Math.floor(0.98 * (sorted.length - 1))];
     const N = 20, w = Math.max(1, Math.ceil((top - sorted[0]) / N)), lo0 = Math.floor(sorted[0] / w) * w;
     const bins = [];
-    for (let i = 0; i < N; i++) bins.push({ lo: i ? lo0 + i * w : -Infinity, hi: lo0 + (i + 1) * w, label: '$' + (lo0 + i * w), n: 0, tiers: [0, 0, 0, 0] });
+    for (let i = 0; i < N; i++) bins.push({ lo: i ? lo0 + i * w : -Infinity, hi: lo0 + (i + 1) * w, label: '$' + (lo0 + i * w), n: 0, tiers: [0, 0, 0] });
     bins[N - 1].hi = Infinity; bins[N - 1].label = '$' + (lo0 + (N - 1) * w) + '+';
     for (const x of devs) { const b = bins.find((y) => x.v >= y.lo && x.v < y.hi); if (b) { b.n++; if (x.ti >= 0) b.tiers[x.ti]++; } }
     const colorOf = (b) => t.tiers[b.tiers.indexOf(Math.max(...b.tiers))];
@@ -346,7 +346,7 @@ window.AID = window.AID || {};
       labels: bins.map((b) => b.label), values: bins.map((b) => b.n), colors: bins.map(colorOf), unit: 'count',
       valueFmt: (v) => (v ? String(v) : ''), tooltipLines: () => ['developers'],
     }));
-    c.foot.textContent = 'X axis: average spend per month, in $' + w + ' steps. Color = usage tier: gray = non-adopter (under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day), then light / medium / heavy = thirds of the other developers by spend (cut points ' + F.value(ctx.spendCuts[0], 'usd') + ' and ' + F.value(ctx.spendCuts[1], 'usd') + ').';
+    c.foot.textContent = 'X axis: average spend per month, in $' + w + ' steps. Color = usage tier: gray = non-adopter (under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day), then low / high = the other developers split at their median spend (' + F.value(ctx.spendCuts[0], 'usd') + ').';
     c.setTable(() => table([{ label: 'Avg spend / mo', value: (b) => b.label, sortable: false }, { label: 'Developers', num: true, value: (b) => b.n }].concat(
       ctx.TIER_SHORT.map((name, i) => ({ label: name, num: true, value: (b) => b.tiers[i] }))), bins, { sortable: false }));
     return c.el;

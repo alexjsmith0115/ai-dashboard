@@ -68,7 +68,7 @@ window.AID = window.AID || {};
         'Adoption month = the first month (after onboarding) with {thr} or more {tool} active days. You can change {thr} in Settings (Active threshold).',
         'A developer who never reaches {thr} active days in one month is a non-adopter.',
         'The adoption month always comes from the full data, not only from the From–To range. Otherwise a developer who adopted before From would look as if they adopted in the From month.',
-        'AI adoption over time = share of developers with {thr}+ active days in each month. Heavy = share with {hi}+ active days.',
+        'AI adoption over time = share of developers with {thr}+ active days in each month. High usage = share with {hi}+ active days.',
         'Adoption % for a group = share of that group\'s after-period developer-months with {thr}+ active days.',
       ],
       read: ['A high adoption rate with a small AI effect means people use the tool, but it does not (yet) change their output.'],
@@ -79,18 +79,19 @@ window.AID = window.AID || {};
       short: 'Each developer gets one usage tier from their use of {tool} after adoption (or after the rollout month): by active days (default) or by spend.',
       how: [
         'Settings (Usage tier based on) sets the basis: Active days or Spend.',
-        'Active days: usage = the average {tool} active days per month in the developer\'s after period. Non-adopter: under 1 day per month. Light: 1 to {thrMinus}. Medium: {thr} to {hiMinus}. Heavy: {hi}+. The thresholds are in Settings.',
-        'Spend: non-adopter is still under 1 active day per month. The other developers are split into thirds by their average {tool} spend per month in the after period: Light = bottom third, Medium = middle third, Heavy = top third. The tier labels show the dollar cut points.',
-        'The spend thirds come from every developer in the date range, not only the filtered group. Thus a filter does not change the tier of a developer.',
+        'Active days: usage = the average {tool} active days per month in the developer\'s after period. Non-adopter: under 1 day per month. Low: 1 to {hiMinus}. High: {hi}+. The threshold is in Settings.',
+        'Spend: non-adopter is still under 1 active day per month. The other developers are split at the median of their average {tool} spend per month in the after period: Low = below the median, High = at or above it. The tier labels show the dollar cut point.',
+        'The spend median comes from every developer in the date range, not only the filtered group. Thus a filter does not change the tier of a developer.',
+        'Two tiers, not three: a light tier (1 to {thrMinus} days) held only developers who reached the active threshold once and then stopped. Too few to read. The five-bucket curve per developer-month is on the Explore tab (Productivity by monthly AI usage).',
       ],
       read: [
-        'If AI causes the effect, the effect grows from light to medium to heavy users. This is called a dose-response pattern. It is one of the strongest signs of a real effect.',
-        'If light and heavy users improved by the same amount, something other than AI use (for example, a process change) is the more likely cause.',
+        'If AI causes the effect, the effect is larger for high-usage developers than for low-usage developers. This is called a dose-response pattern. It is one of the strongest signs of a real effect.',
+        'If low- and high-usage developers improved by the same amount, something other than AI use (for example, a process change) is the more likely cause.',
       ],
       watch: [
-        'Developers choose how much to use AI. Heavy users may differ from light users in other ways (role, type of work, motivation).',
+        'Developers choose how much to use AI. High-usage developers may differ from low-usage developers in other ways (role, type of work, motivation).',
         'Spend also depends on model prices and pricing changes, not only on use. A developer who uses an expensive model looks heavier. Busy developers spend more, so heavy spenders can look more productive without an AI effect. Compare the result with active-day tiers.',
-        'Many developers with the same spend (for example, the same seat price) make the thirds uneven: equal values always go into the same tier.',
+        'Many developers with the same spend (for example, the same seat price) make the halves uneven: equal values always go into the same tier.',
       ],
     },
     {
@@ -210,7 +211,7 @@ window.AID = window.AID || {};
         'Cells with fewer than {minGroup} developers, or with a 95% CI wider than 200 pts, are hidden.',
       ],
       read: [
-        '+20 pts for heavy SDE2s means: heavy-user SDE2s improved 20 percentage points more than non-adopter SDE2s over the same months.',
+        '+20 pts for high-usage SDE2s means: high-usage SDE2s improved 20 percentage points more than non-adopter SDE2s over the same months.',
         'Changes that hit everyone (seasonality, re-orgs) cancel out, because both groups had them.',
       ],
       watch: ['Non-adopters per job level are often few, so the CIs are wide. If a level has fewer than {minGroup} non-adopters, its lift is not shown.'],
@@ -284,7 +285,7 @@ window.AID = window.AID || {};
         'Story points are not a core metric: each team sets its own point values, and teams can inflate them after AI arrives. Story points are still on the Explore tab.',
         'Yes: the headline metric improved, and at least half of the core metrics improved. No: more core metrics got worse than improved, or the headline got worse. Partly: some improved. Not yet: none clearly changed.',
         'The large number is the AI effect for the headline metric. You choose the headline metric at the top right.',
-        'The usage-level scorecard shows the effect for light, medium, and heavy users. The check below it shows the effect with each comparison group.',
+        'The usage-level scorecard shows the effect for low- and high-usage developers. The check below it shows the effect with each comparison group.',
       ],
       read: [
         'Look at three things: the headline effect and its CI, whether the effect grows with usage tier, and whether the comparison-group check agrees.',
@@ -323,14 +324,14 @@ window.AID = window.AID || {};
     },
     {
       id: 'c-adoption', title: 'AI adoption over time', area: 'Executive summary',
-      short: 'The share of developers who used {toolAny} at least {thr} days (active) and at least {hi} days (heavy) in each month.',
+      short: 'The share of developers who used {toolAny} at least {thr} days (active) and at least {hi} days (high usage) in each month.',
       how: [
         'For each month: developers with {thr}+ {tool} active days ÷ all developers with data that month. The same for {hi}+ days.',
         'Cursor + Copilot: the solid lines use combined active days (a day with both tools counts once). The dashed lines show each tool on its own. One developer can be in both dashed lines, and a developer with fewer than {thr} days in each tool can still be in the solid line.',
         'New hires\' onboarding months are left out.',
         'The vertical line is the company rollout month.',
       ],
-      read: ['The gap between the two lines shows how many active users became heavy users.'],
+      read: ['The gap between the two lines shows how many active users became high-usage developers.'],
       see: ['m-adoption'],
     },
     {
@@ -341,7 +342,7 @@ window.AID = window.AID || {};
         'In rollout mode, the x-axis is calendar months. In adoption-month mode, the x-axis is months before and after each developer\'s adoption.',
       ],
       read: [
-        'If AI drives the change, the heavy-usage line pulls away from the non-adopter line after adoption.',
+        'If AI drives the change, the high-usage line pulls away from the non-adopter line after adoption.',
         'Lines that move together are the company-wide changes (for example, the December dip) that the AI effect removes.',
       ],
       watch: ['Tiers differ in level before AI too (for example, more senior developers in one tier). Look at the gap changing, not at the gap itself.'],
@@ -394,7 +395,7 @@ window.AID = window.AID || {};
         'Whiskers = 95% CI. Cells with fewer than {minGroup} developers, or with a CI wider than 200 pts, are hidden. A whisker that goes past the axis ends in an arrow.',
       ],
       read: [
-        'Compare the heavy bar with the light bar at each level. A large gap at one level means AI helps that level most.',
+        'Compare the High bar with the Low bar at each level. A large gap at one level means AI helps that level most.',
         'In the table, bold values are statistically clear.',
       ],
       watch: ['Cells are small. A long whisker means the value is not reliable.'],
@@ -474,7 +475,7 @@ window.AID = window.AID || {};
       id: 'c-usagedist', title: 'How much each developer uses AI', area: 'Explore',
       short: 'The number of developers at each level of average {tool} active days per month, or of average spend per month when usage tiers are based on spend.',
       how: ['Each developer is counted once, by their average active days per month in the after period. Color = usage tier.'],
-      read: ['A tall bar at <1 means many non-adopters. A spread to the right means many heavy users.'],
+      read: ['A tall bar at <1 means many non-adopters. A spread to the right means many high-usage developers.'],
       see: ['m-tiers'],
     },
     {
@@ -735,7 +736,7 @@ window.AID = window.AID || {};
       el('ol',
         el('li', { text: 'The AI effect on the headline metric, and whether its 95% CI excludes 0.' }),
         el('li', { text: 'The event study: the months before adoption are flat near 0.' }),
-        el('li', { text: 'The effect grows with usage tier (light → medium → heavy), and the comparison-group check agrees.' })),
+        el('li', { text: 'The effect grows with usage tier (low → high), and the comparison-group check agrees.' })),
       p('If all three hold, the result is strong evidence. Developers chose whether to use AI, so it is not proof.'),
       el('p.method-note', { text: 'Click the ? next to any chart to see its explanation. Every chart also has a Table button with its exact values.' }));
   }

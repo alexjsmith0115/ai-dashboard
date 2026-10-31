@@ -169,9 +169,9 @@ window.AID = window.AID || {};
 
     const tierCache = new Map();
     // Usage tiers. Non-adopter = under NON_ADOPTER_DAYS average active days per month in the after period, for both bases.
-    // Basis 'days': Light / Medium / Heavy from average active days (of the selected AI tool) and the two day thresholds.
-    // Basis 'spend': Light / Medium / Heavy = thirds of the other developers by average monthly spend in the after period.
-    // The thirds come from every developer in the date range (ignoring org/domain/team/level filters), so a filter does not move a tier.
+    // Basis 'days': Low / High from average active days (of the selected AI tool), split at the high-usage threshold.
+    // Basis 'spend': Low / High = the other developers split at the median of average monthly spend in the after period.
+    // The median comes from every developer in the date range (ignoring org/domain/team/level filters), so a filter does not move a tier.
     const afterMean = (d, key) => {
       const after = rowsOf(d).filter((r) => phaseOf(r) === 'after');
       return mean((after.length ? after : rowsOf(d)).map((r) => r.v[key]));
@@ -183,16 +183,18 @@ window.AID = window.AID || {};
     if (tierBasis === 'spend') {
       const vals = ds.devs.filter((d) => rowsOf(d).length && (!f.icOnly || d.isIC) && usageAfter(d) >= NON_ADOPTER_DAYS)
         .map(spendAfter).filter(isNum).sort((a, b) => a - b);
-      if (vals.length >= 3) spendCuts = [quantile(vals, 1 / 3), quantile(vals, 2 / 3)];
+      if (vals.length >= 2) spendCuts = [quantile(vals, 0.5)];
       else tierBasis = 'days'; // no spend data: fall back to active days
     }
-    const TIER_SHORT = ['Non-adopter', 'Light', 'Medium', 'Heavy'];
+    // Two usage tiers above non-adopter. A third (light) tier held only developers who reached the active threshold once and
+    // then stopped: too few to read. The fine-grained dose curve is on the Explore tab (doseResponse, per developer-month).
+    const TIER_SHORT = ['Non-adopter', 'Low', 'High'];
     const usd = (v) => '$' + Math.round(v);
     const TIERS = [
       'Non-adopter (<' + NON_ADOPTER_DAYS + ' d/mo)',
       ...(tierBasis === 'spend'
-        ? ['Light (under ' + usd(spendCuts[0]) + '/mo)', 'Medium (' + usd(spendCuts[0]) + '–' + usd(spendCuts[1]) + ')', 'Heavy (' + usd(spendCuts[1]) + '+/mo)']
-        : ['Light (' + NON_ADOPTER_DAYS + '–' + (thr - 1) + ')', 'Medium (' + thr + '–' + (hi - 1) + ')', 'Heavy (' + hi + '+ d/mo)']),
+        ? ['Low (under ' + usd(spendCuts[0]) + '/mo)', 'High (' + usd(spendCuts[0]) + '+/mo)']
+        : ['Low (' + NON_ADOPTER_DAYS + '–' + (hi - 1) + ' d/mo)', 'High (' + hi + '+ d/mo)']),
     ];
     const tierIndex = (d) => {
       if (tierCache.has(d)) return tierCache.get(d);
@@ -200,8 +202,8 @@ window.AID = window.AID || {};
       let i;
       if (u == null) i = -1;
       else if (u < NON_ADOPTER_DAYS) i = 0;
-      else if (tierBasis === 'spend') { const sp = spendAfter(d); i = sp == null ? -1 : sp >= spendCuts[1] ? 3 : sp >= spendCuts[0] ? 2 : 1; }
-      else i = u >= hi ? 3 : u >= thr ? 2 : 1;
+      else if (tierBasis === 'spend') { const sp = spendAfter(d); i = sp == null ? -1 : sp >= spendCuts[0] ? 2 : 1; }
+      else i = u >= hi ? 2 : 1;
       tierCache.set(d, i);
       return i;
     };
@@ -524,7 +526,7 @@ window.AID = window.AID || {};
       return { xs, labels: xs.map((x) => (o.xMode === 'relative' ? (x > 0 ? '+' + x : String(x)) : AID.data.monthLabel(x))), series: out, folded: fold ? fold.size : 0 };
     }
 
-    // Share of developers per month at the active / heavy thresholds. In the Both view, also each tool on its own.
+    // Share of developers per month at the active / high-usage thresholds. In the Both view, also each tool on its own.
     function adoptionSeries() {
       const rows = months.map(() => ({ n: 0, any: 0, act: 0, high: 0, cur: 0, cp: 0 }));
       const cpKey = AID.copilotKey('activeDays');

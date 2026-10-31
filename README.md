@@ -105,9 +105,9 @@ The verdict shows the headline effect with all three groups. If the results are 
 - *Bugs found per 100 PRs* and *Production bugs per 100 PRs*: 100 × bugs ÷ PRs merged, over 3 months. The adoption share is the average of the 3 months that end one month earlier, because bugs are found after the code is merged. The newest 2 months of the data are left out: bugs from their PRs are not found yet.
 - The model uses every team in the selected org and domain. The team and job level filters do not apply.
 
-**AI usage tiers.** Each developer's tier comes from their average active days per month (selected AI tool) in the after period: Non-adopter (< 1), Light (1–4), Medium (5–11), Heavy (12+). You can change the Medium and Heavy thresholds in Settings. The main evidence that AI causes a change is a comparison of tiers over the same months. If heavy users improved more than non-adopters, seasonality and org-wide changes cannot explain the gap.
+**AI usage tiers.** Each developer's tier comes from their average active days per month (selected AI tool) in the after period: Non-adopter (< 1), Low (1–11), High (12+). You can change the High threshold in Settings. With the spend basis, Low and High are split at the median spend. Two tiers, not three: a light tier held only developers who reached the active threshold once and then stopped, which was too few to read. The five-bucket curve per developer-month is on the Explore tab. The main evidence that AI causes a change is a comparison of tiers over the same months. If high-usage developers improved more than non-adopters, seasonality and org-wide changes cannot explain the gap.
 
-**Lift.** Lift = a tier's improvement minus the improvement of non-adopters in the same group (for example, heavy-user SDE2s vs non-adopter SDE2s), in percentage points. Positive = better. The 95% CI uses the standard errors of both cells. Cells with fewer developers than the *Minimum developers per group* setting (default 5) are hidden.
+**Lift.** Lift = a tier's improvement minus the improvement of non-adopters in the same group (for example, high-usage SDE2s vs non-adopter SDE2s), in percentage points. Positive = better. The 95% CI uses the standard errors of both cells. Cells with fewer developers than the *Minimum developers per group* setting (default 5) are hidden.
 
 **Groups.** Groups with fewer developers who have before/after data than the *Minimum developers per group* setting (default 5) are flagged "Small sample". The executive charts do not rank them.
 
@@ -124,7 +124,7 @@ The verdict shows the headline effect with all three groups. If the results are 
 - The AI effect by month since adoption (event study).
 - Adoption over time, and the headline metric by usage tier over time.
 - **Which groups are most impacted?** for Org, Domain, Team, or Job level. This section has key findings, a ranked change chart (top/bottom 10 when there are many teams), adoption vs impact, and a full table.
-- **Impact by job level and AI usage**: grouped bars for each job level (or org) × usage tier, with 95% CI whiskers. Switch between *AI effect* and *Lift vs non-adopters* (the before/after change minus that of non-adopters). A findings list and a matrix table compare heavy users with non-adopters at each level.
+- **Impact by job level and AI usage**: grouped bars for each job level (or org) × usage tier, with 95% CI whiskers. Switch between *AI effect* and *Lift vs non-adopters* (the before/after change minus that of non-adopters). A findings list and a matrix table compare high-usage developers with non-adopters at each level.
 
 **Explore**
 - Metric trends for any metric. You can group by org, domain, team, level, role, or usage tier. The x-axis can be calendar months or months since adoption.

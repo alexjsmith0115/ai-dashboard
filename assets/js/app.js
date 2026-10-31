@@ -21,6 +21,43 @@ window.AID = window.AID || {};
     },
   };
 
+  // Labels for the settings, to list the ones that differ from DEFAULTS.settings (the recorded defaults in the README).
+  // A results page with changed settings says so, so nobody reads a tuned result as the standard one.
+  const SETTING_INFO = {
+    mode: ['Before / after split', { rollout: 'Company rollout month', perdev: 'Each developer\'s adoption month' }],
+    rollout: ['Rollout month', (v) => (v ? AID.data.monthLabel(AID.data.monthIndex(v), true) : 'Auto')],
+    control: ['AI effect comparison group', { all: 'All developers without AI yet', notyet: 'Adopters before adoption only', never: 'Non-adopters only' }],
+    ramp: ['Ramp-up months to skip'],
+    onboard: ['New-hire onboarding months to skip'],
+    minGroup: ['Minimum developers per group'],
+    outlierCap: ['Cap extreme values', { p99: '99th percentile', p95: '95th percentile', none: 'No cap' }],
+    minPrs: ['Minimum merged PRs for a PR median'],
+    logScale: ['Log scale for the AI effect', { times: 'Times and PR size', all: 'Times, PR size, and counts', none: 'None' }],
+    shrink: ['Group estimates', { true: 'Pulled toward the parent group', false: 'Raw' }],
+    tierBasis: ['Usage tier based on', { days: 'Active days', spend: 'Spend' }],
+    activeDays: ['Active threshold (days / month)'],
+    highDays: ['High-usage threshold (days / month)'],
+  };
+  function settingChanges() {
+    const out = [];
+    for (const [k, [label, f]] of Object.entries(SETTING_INFO)) {
+      const v = state.settings[k], d = DEFAULTS.settings[k];
+      if (v == null || String(v) === String(d)) continue;
+      const show = (x) => (typeof f === 'function' ? f(x) : f && f[String(x)] != null ? f[String(x)] : String(x));
+      out.push(label + ': ' + show(v) + ' (default: ' + show(d) + ')');
+    }
+    return out;
+  }
+  function settingsNotice() {
+    const list = settingChanges();
+    if (!list.length) return null;
+    return el('div.alert', { style: { marginBottom: '16px' } },
+      el('strong', { text: 'These results use settings that differ from the recorded defaults.' }),
+      el('button.btn.small.ghost', { type: 'button', style: { float: 'right' }, onclick: () => update({ settings: Object.assign({}, DEFAULTS.settings) }), text: 'Restore defaults' }),
+      el('ul', list.map((x) => el('li', { text: x }))),
+      el('p', { style: { marginTop: '4px' }, text: 'When you share these results, say which settings changed and why.' }));
+  }
+
   const state = loadState();
   let dataset = null;
   let sourceName = '';
@@ -307,6 +344,8 @@ window.AID = window.AID || {};
       return;
     }
     const app = { state, update };
+    const notice = settingsNotice();
+    if (notice) main.appendChild(notice);
     if (state.tab === 'exec') AID.exec.render(main, ctx, app); else AID.explore.render(main, ctx, app);
     requestAnimationFrame(() => window.scrollTo(0, y));
   }

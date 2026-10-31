@@ -170,6 +170,7 @@ window.AID = window.AID || {};
     const sig = p + '|' + minPrs;
     if (ds.outlierSig === sig) return;
     ds.outlierSig = sig;
+    ds.capP = p;
     ds.caps = new Map();
     for (const m of AID.METRICS.filter((x) => x.trim)) {
       const k = m.key;
@@ -190,6 +191,18 @@ window.AID = window.AID || {};
       }
       ds.caps.set(k, { cut, capped, dropped, n: vals.length });
     }
+  }
+
+  // Disclosure text for the cap, so no one reads a capped value as raw. Null when the metric has no capped months.
+  const pctile = (p) => Math.round(p * 100) + 'th percentile';
+  function capNote(ds, key) {
+    const c = ds.caps && ds.caps.get(key), m = AID.M[key];
+    if (!c || c.cut == null || !c.capped) return null;
+    return 'Values above the ' + pctile(ds.capP) + ' (' + AID.fmt.value(c.cut, m.unit) + (m.unit === 'count' ? ' lines' : '') + ') are capped: ' + c.capped + ' developer-months.';
+  }
+  function capSummary(ds) {
+    const parts = AID.METRICS.filter((m) => capNote(ds, m.key)).map((m) => m.label + ' ' + AID.fmt.value(ds.caps.get(m.key).cut, m.unit) + (m.unit === 'count' ? ' lines' : ''));
+    return parts.length ? 'Capped values: developer-months above the ' + pctile(ds.capP) + ' are set to it, so one huge PR or one very slow ticket cannot skew the results. Cutoffs: ' + parts.join(', ') + '. Change this in Settings.' : null;
   }
 
   function derive(v) {
@@ -343,5 +356,5 @@ window.AID = window.AID || {};
     return Papa.unparse({ fields, data: rows.map((r) => fields.map((f) => r[f])) });
   }
 
-  AID.data = { parseCsv, classify, buildDataset, attachTeams, applyTool, applyOutliers, readFile, normalizeMonth, monthIndex, monthKey, monthLabel, toCsv };
+  AID.data = { parseCsv, classify, buildDataset, attachTeams, applyTool, applyOutliers, capNote, capSummary, readFile, normalizeMonth, monthIndex, monthKey, monthLabel, toCsv };
 })(window.AID);

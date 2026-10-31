@@ -44,7 +44,8 @@ window.AID = window.AID || {};
     const bar = el('div.section-head.exec-head',
       el('h2', { text: 'Executive summary' }),
       el('span.exec-head-effect', 'AI effect on ' + meta.label + ': ', el('strong', { text: head.pct != null ? F.pct(head.pct) : '—' })),
-      el('div', { style: { marginLeft: 'auto' } }, select('Headline metric', AID.ui.metricOptions(HEADLINE_OPTIONS), metric, (v) => app.update({ exec: { metric: v } }))));
+      el('div.field.headline-pick', el('span', { text: 'Headline metric' }),
+        seg('Headline metric', AID.ui.metricOptions(HEADLINE_OPTIONS).map((o) => Object.assign(o, { short: AID.M[o.value].short })), metric, (v) => app.update({ exec: { metric: v } }), '.seg-pill')));
     page.append(sentinel, bar);
     if (stickyObs) stickyObs.disconnect();
     if (window.IntersectionObserver) {
@@ -67,6 +68,8 @@ window.AID = window.AID || {};
     page.appendChild(groupsSection(ctx, app, metric, meta, t));
     page.appendChild(crossSection(ctx, app, metric, meta, t));
 
+    const caps = AID.data.capSummary(ctx.ds);
+    if (caps) page.appendChild(el('p.card-foot', { text: caps }));
     page.appendChild(el('p.card-foot', { text: 'AI effect = actual value minus the value expected without AI. The expected value comes from each developer\'s own level before adoption plus the company-wide change in that month, measured on developers who had not adopted AI yet. This removes seasonality and company-wide changes. It cannot remove changes that hit only the adopters at the time they adopted (for example, a team re-org in the same month). Developers chose how much to use AI, so read the effects as strong evidence, not proof.' }));
   }
 
@@ -98,13 +101,12 @@ window.AID = window.AID || {};
     }
     if (quality.status !== 'nodata') {
       const q = quality.status === 'worse' ? (quality.slight ? 'got slightly worse' : 'got worse') : quality.status === 'improved' ? (quality.slight ? 'improved slightly' : 'improved')
-        : quality.likely === 'worse' ? 'likely got worse' : quality.likely === 'improved' ? 'likely improved'
-        : quality.possible === 'worse' ? 'possibly got worse' : quality.possible === 'improved' ? 'possibly improved' : 'held steady';
+        : quality.likely === 'worse' ? 'likely got worse' : quality.likely === 'improved' ? 'likely improved' : 'held steady';
       parts.push('Quality (reopen rate) ', el('strong', { text: q }), ' (' + F.pct(quality.pct) + '). ');
     }
     const bugs = ctx.teamEffect('bugRate');
     if (bugs.pct != null && !bugs.wide) {
-      const q = bugs.status === 'worse' ? 'rose' : bugs.status === 'improved' ? 'fell' : bugs.likely === 'worse' ? 'likely rose' : bugs.likely === 'improved' ? 'likely fell' : bugs.possible === 'worse' ? 'possibly rose' : bugs.possible === 'improved' ? 'possibly fell' : 'did not clearly change';
+      const q = bugs.status === 'worse' ? 'rose' : bugs.status === 'improved' ? 'fell' : bugs.likely === 'worse' ? 'likely rose' : bugs.likely === 'improved' ? 'likely fell' : 'did not clearly change';
       parts.push('Bugs per 100 PRs ', el('strong', { text: q }), ' as teams adopted AI (' + F.pct(bugs.pct) + ' at full adoption). ');
     }
     // Dose: if AI drives the change, the effect grows with usage.
@@ -253,7 +255,7 @@ window.AID = window.AID || {};
     return tile(m.label, m.source, c.wide ? 'Too uncertain' : c.pct != null ? F.pct(c.pct) : '—', '', tone,
       [kpiChip(c), el('span', { text: c.pct != null ? F.metric(c.after, c.key, { short: true }) + ' vs ' + F.metric(c.before, c.key, { short: true }) + ' expected' + unit : 'Not enough data' })],
       s ? AID.charts.sparkline(s.values, { markerIndex: markerIdx }) : null,
-      c.lo != null ? ciText(c) : null, 'metric:' + c.key, ciRange(c));
+      c.lo != null ? ciText(c) : null, 'metric:' + c.key, ciRange(c), AID.data.capNote(ctx.ds, c.key));
   }
   const ciRange = (c) => (c.lo != null ? F.pct(c.lo, 0) + ' to ' + F.pct(c.hi, 0) : null);
 
@@ -291,12 +293,14 @@ window.AID = window.AID || {};
   }
 
   // ci: the 95% CI as text, shown next to the value so nobody reads the number without its range.
-  function tile(label, src, value, unit, tone, meta, spark, title, helpId, ci) {
+  // note: a small line under the sparkline (the cap disclosure).
+  function tile(label, src, value, unit, tone, meta, spark, title, helpId, ci, note) {
     return el('div.card.kpi',
       el('div.kpi-label', el('span.kpi-name', el('span', { text: label }), helpId ? AID.help.button(helpId) : null), el('span.src', { text: src })),
       el('div.kpi-value' + (tone ? '.' + tone : ''), { title: title || null }, value, unit ? el('span.unit', { text: unit }) : null, ci ? el('span.kpi-ci', { text: ci, title: '95% confidence interval' }) : null),
       el('div.kpi-meta', meta),
-      el('div.kpi-spark', spark));
+      el('div.kpi-spark', spark),
+      note ? el('div.kpi-note', { text: note }) : null);
   }
   function lastIndex(a) { for (let i = a.length - 1; i >= 0; i--) if (a[i] != null) return i; return -1; }
 
@@ -515,7 +519,7 @@ window.AID = window.AID || {};
       { label: 'Raw', num: true, value: (r) => (r.raw ? r.raw.pct : null), format: (v, r) => (r.raw ? F.pct(r.raw.pct) : '—'), title: 'Before the pull toward the parent group. Its 95% CI is in the bar tooltip.' },
       { label: 'Pulled', num: true, value: (r) => r.shrink, format: (v, r) => (r.shrink == null ? '—' : Math.round(r.shrink * 100) + '%'), title: 'Share of the distance to the parent group that the estimate moved' });
     cols.push(
-      { label: 'Status', value: (r) => r.status, cell: (r) => (r.lowSample ? el('span.chip', icon('warn'), r.wide ? 'Too uncertain' : 'Small sample') : statusChip(r)) });
+      { label: 'Status', value: (r) => r.status, cell: (r) => (r.lowSample ? el('span.chip', icon('warn'), r.wide ? 'Too uncertain' : 'Small sample') : statusChip(r, false, { possible: true })) });
     return table(cols, rows, { sortCol: cols.findIndex((c) => c.label === 'AI effect'), sortDir: -1, rowClass: (r) => (r.lowSample ? 'muted' : '') });
   }
 

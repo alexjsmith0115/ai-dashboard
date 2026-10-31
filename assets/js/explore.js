@@ -48,6 +48,8 @@ window.AID = window.AID || {};
     page.appendChild(g3);
 
     page.appendChild(devTableCard(ctx, st, set));
+    const caps = AID.data.capSummary(ctx.ds);
+    if (caps) page.appendChild(el('p.card-foot', { text: caps }));
   }
 
   // ---------------- Trends ----------------
@@ -70,7 +72,8 @@ window.AID = window.AID || {};
     const series = s.series.map((x, i) => Object.assign(x, {
       color: st.trendGroup === 'tier' ? (ctx.TIERS.indexOf(x.name) >= 0 ? t.tiers[ctx.TIERS.indexOf(x.name)] : t.other) : AID.charts.colorFor(x.name, i, allNames),
     }));
-    if (s.folded) c.foot.textContent = 'Showing the 7 largest groups. The other ' + s.folded + ' are combined into "Other". Filter or use the table view for detail.';
+    const foot = [s.folded ? 'Showing the 7 largest groups. The other ' + s.folded + ' are combined into "Other". Filter or use the table view for detail.' : null, AID.data.capNote(ctx.ds, st.trendMetric)].filter(Boolean);
+    if (foot.length) c.foot.textContent = foot.join(' ');
     const mIdx = rel ? s.xs.indexOf(0) : (ctx.perDev ? -1 : s.xs.indexOf(ctx.rolloutIdx));
     queueMicrotask(() => AID.charts.line(c.canvas, {
       labels: s.labels, series, unit: meta.unit, yZero: meta.unit === 'count', endLabels: series.length <= 4, showN: true,
@@ -101,7 +104,7 @@ window.AID = window.AID || {};
         { label: 'After', num: true, value: (r) => r.after, format: (v, r) => F.metric(v, r.key, { short: true }) },
         { label: 'Change', num: true, value: (r) => (r.fromZero ? null : r.pct), format: (v, r) => (r.fromZero ? 'from ~0' : F.pct(v)) },
         { label: '95% CI', num: true, value: (r) => r.lo, format: (v, r) => (r.lo == null || r.fromZero ? '—' : F.pct(r.lo, 0) + ' to ' + F.pct(r.hi, 0)) },
-        { label: 'Status', value: (r) => r.status, cell: (r) => statusChip(r) },
+        { label: 'Status', value: (r) => r.status, cell: (r) => statusChip(r, false, { possible: true }) },
       ], rows, { maxHeight: '420px' }));
   }
 

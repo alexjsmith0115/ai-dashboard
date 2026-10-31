@@ -51,10 +51,13 @@ window.AID = window.AID || {};
     return Object.entries(by).map(([g, options]) => ({ group: g, options }));
   }
 
-  function seg(label, options, value, onChange) {
-    const wrap = el('div.seg', { role: 'group', 'aria-label': label });
+  // variant: an extra class for the track, for example '.seg-pill' (the larger rounded style).
+  function seg(label, options, value, onChange, variant) {
+    const wrap = el('div.seg' + (variant || ''), { role: 'group', 'aria-label': label });
     for (const o of options) {
-      wrap.appendChild(el('button', { type: 'button', 'aria-pressed': String(o.value === value), disabled: !!o.disabled, title: o.title || null, onclick: () => onChange(o.value), text: o.label }));
+      // o.short: a shorter label that replaces o.label on narrow screens (CSS shows one of the two).
+      const text = o.short && o.short !== o.label ? [el('span.seg-full', { text: o.label }), el('span.seg-short', { text: o.short, 'aria-hidden': 'true' })] : o.label;
+      wrap.appendChild(el('button', { type: 'button', 'aria-pressed': String(o.value === value), disabled: !!o.disabled, title: o.title || null, 'aria-label': Array.isArray(text) ? o.label : null, onclick: () => onChange(o.value) }, text));
     }
     return wrap;
   }
@@ -78,21 +81,23 @@ window.AID = window.AID || {};
     return svg;
   }
   // c = comparison result from analysis.compare
-  function statusChip(c, big) {
+  // opts.possible: show the "possibly" tier (tables only). Elsewhere it reads "No clear change".
+  function statusChip(c, big, opts) {
     const cls = big ? '.chip.big' : '.chip';
     if (!c || c.status === 'nodata') return el('span' + cls, icon('flat'), 'Not enough data');
     const dirIcon = c.diff > 0 ? 'up' : 'down';
     // Tiers: clear (95% CI excludes 0; "slight" under 5%), likely (only the 80% CI excludes 0), possibly (only the 50% CI
-    // excludes 0), no clear change.
+    // excludes 0; tables only, gray, no arrow: by chance about 3 results in 10 with no effect land here), no clear change.
     if (c.status === 'improved') return el('span' + cls + '.good', icon(dirIcon), c.slight ? 'Slight improvement' : 'Improved');
     if (c.status === 'worse') return el('span' + cls + '.bad', icon(dirIcon), c.slight ? 'Slightly worse' : 'Worse');
     if (c.status === 'up' || c.status === 'down') return el('span' + cls, icon(dirIcon), (c.slight ? 'Slightly ' : '') + (c.status === 'up' ? 'Increased' : 'Decreased').toLowerCase().replace(/^./, (ch) => (c.slight ? ch : ch.toUpperCase())));
     if (c.likely === 'improved') return el('span' + cls + '.likely-good', icon(dirIcon), 'Likely improved');
     if (c.likely === 'worse') return el('span' + cls + '.likely-bad', icon(dirIcon), 'Likely worse');
     if (c.likely === 'up' || c.likely === 'down') return el('span' + cls + '.likely', icon(dirIcon), c.likely === 'up' ? 'Likely increased' : 'Likely decreased');
-    if (c.possible === 'improved') return el('span' + cls + '.possible-good', icon(dirIcon), 'Possibly improved');
-    if (c.possible === 'worse') return el('span' + cls + '.possible-bad', icon(dirIcon), 'Possibly worse');
-    if (c.possible === 'up' || c.possible === 'down') return el('span' + cls + '.possible', icon(dirIcon), c.possible === 'up' ? 'Possibly increased' : 'Possibly decreased');
+    if (opts && opts.possible && c.possible) {
+      const text = { improved: 'Possibly improved', worse: 'Possibly worse', up: 'Possibly increased', down: 'Possibly decreased' }[c.possible];
+      return el('span' + cls + '.possible', { title: 'Only the 50% CI excludes 0. A weak sign: about 3 results in 10 land here by chance when there is no effect.' }, text);
+    }
     return el('span' + cls, icon('flat'), 'No clear change');
   }
   function answerChip(kind, text) {

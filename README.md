@@ -100,7 +100,7 @@ The verdict shows the headline effect with all three groups. If the results are 
 
 **New hires.** A new hire is a developer whose first month of work comes after the first month in the data. Work = any PRs, Jira issues, story points, GitHub additions, or active days of the selected AI tool. The dashboard leaves out each new hire's first 3 onboarding months from every chart, table, and statistic. You can change the number of months in Settings (*New-hire onboarding months to skip*).
 
-**Paired comparison.** Each developer is compared with their own baseline: the after-period average minus the before-period average. Then the dashboard averages these per-developer changes. A developer needs 2+ months on each side. Thus new hires and leavers do not change the result. "Improved" or "Worse" shows only when the 95% confidence interval excludes zero. A clear effect under 5% reads "Slight improvement" or "Slightly worse". When only the 80% CI excludes zero, the status is "Likely improved" or "Likely worse": probable, not established, and not counted in the verdict. When only the 50% CI excludes zero, the status is "Possibly improved" or "Possibly worse": a weak sign, not counted in the verdict. With no real effect, about 3 results in 10 land in this tier by chance.
+**Paired comparison.** Each developer is compared with their own baseline: the after-period average minus the before-period average. Then the dashboard averages these per-developer changes. A developer needs 2+ months on each side. Thus new hires and leavers do not change the result. "Improved" or "Worse" shows only when the 95% confidence interval excludes zero. A clear effect under 5% reads "Slight improvement" or "Slightly worse". When only the 80% CI excludes zero, the status is "Likely improved" or "Likely worse": probable, not established, and not counted in the verdict. When only the 50% CI excludes zero, the status is "Possibly improved" or "Possibly worse": a weak sign, not counted in the verdict. With no real effect, about 3 results in 10 land in this tier by chance. Thus it shows only in the tables, in gray with no arrow. The tiles, the charts, and the verdict show "No clear change".
 
 **Team-level effect.** Bugs exist only per team, and review work moves between developers in a team. Thus the dashboard also fits a model on team-months: value = team effect + month effect + b × adoption share. Adoption share = the team's developers with the active-days threshold ÷ its developers. b = the change from 0% to 100% team adoption. The 95% CI treats each team as one unit, and the effect needs 8+ teams.
 - *PRs merged per developer (team level)*: the team's PRs ÷ its developers, with the adoption share of the same month. If this effect is smaller than the developer effect on PRs merged, part of the developer gain came from other people in the team.
@@ -114,6 +114,30 @@ The verdict shows the headline effect with all three groups. If the results are 
 **Groups.** Groups with fewer developers who have before/after data than the *Minimum developers per group* setting (default 5) are flagged "Small sample". The executive charts do not rank them.
 
 **Group estimates are pulled toward the parent group** (empirical Bayes shrinkage, *Which groups are most impacted?* only). A team's estimate moves toward its domain's pooled estimate by B = its own noise variance ÷ (its own noise variance + the real spread between teams). A precise team keeps its value; a noisy team moves most of the way. The spread between teams comes from the data, so with no real differences every team goes to the pooled value, and with large real differences nothing moves. The parent is the team's domain (or the domain's org) when it has 3+ groups, else all groups. The table shows the raw estimate and the pull. Settings (*Group estimates*) turns it off. The headline, tiles, tiers, and event study never move.
+
+## Recorded defaults
+
+Decide the settings before you read the results, and do not change them because of a result. If you change thresholds after you see results, you can find an effect that is not there. The dashboard uses these defaults. When a setting differs from its default, the Executive summary and Explore pages show a notice that lists the change, with a button to restore the defaults.
+
+| Setting | Default |
+|---|---|
+| Before / after split | Company rollout month |
+| Rollout month | Auto (first month with 20%+ of developers active) |
+| AI effect comparison group | All developers without AI yet |
+| Ramp-up months to skip | 0 |
+| New-hire onboarding months to skip | 3 |
+| Minimum developers per group | 5 |
+| Cap extreme values | 99th percentile |
+| Minimum merged PRs for a PR median | 1 (keeps every month) |
+| Log scale for the AI effect | Times and PR size |
+| Group estimates | Pulled toward the parent group |
+| Usage tier based on | Active days |
+| Active threshold | 5 days / month |
+| High-usage threshold | 12 days / month |
+
+Status thresholds are fixed in the code: the verdict counts only results whose 95% CI excludes zero.
+
+Capped values are disclosed where they show: each capped KPI tile has a note with its cutoff, and the foot of each page lists all cutoffs.
 
 ## Dashboards
 

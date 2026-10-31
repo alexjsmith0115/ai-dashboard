@@ -38,21 +38,28 @@ window.AID = window.AID || {};
   const T95 = [[1, 12.71], [2, 4.30], [3, 3.18], [4, 2.78], [5, 2.57], [6, 2.45], [7, 2.36], [8, 2.31], [9, 2.26], [10, 2.23], [12, 2.18], [15, 2.13], [20, 2.09], [25, 2.06], [30, 2.04], [40, 2.02], [60, 2.00], [120, 1.98]];
   // Two-sided 80% t critical values, for the "likely" status tier.
   const T80 = [[1, 3.08], [2, 1.89], [3, 1.64], [4, 1.53], [5, 1.48], [6, 1.44], [7, 1.41], [8, 1.40], [9, 1.38], [10, 1.37], [12, 1.36], [15, 1.34], [20, 1.33], [25, 1.32], [30, 1.31], [40, 1.30], [60, 1.30], [120, 1.29]];
+  // Two-sided 50% t critical values, for the "possibly" status tier.
+  const T50 = [[1, 1.000], [2, 0.816], [3, 0.765], [4, 0.741], [5, 0.727], [6, 0.718], [7, 0.711], [8, 0.706], [9, 0.703], [10, 0.700], [12, 0.695], [15, 0.691], [20, 0.687], [25, 0.684], [30, 0.683], [40, 0.681], [60, 0.679], [120, 0.677]];
   const SLIGHT_PCT = 0.05;       // a clear effect under this size is "slight"
-  function tCrit(df, table) {
-    const T = table || T95, inf = table ? 1.28 : 1.96;
+  function tCrit(df, table, inf) {
+    const T = table || T95;
+    inf = inf || 1.96;
     if (df < 1) return Infinity;
     let v = inf;
     for (let i = T.length - 1; i >= 0; i--) if (df >= T[i][0]) { v = T[i][1]; break; }
     return df > 120 ? inf : v;
   }
-  const tCrit80 = (df) => tCrit(df, T80);
+  const tCrit80 = (df) => tCrit(df, T80, 1.28);
+  const tCrit50 = (df) => tCrit(df, T50, 0.674);
   // Status tiers from the CI and the size: 'improved' / 'worse' (95% CI excludes 0), with size 'slight' under SLIGHT_PCT;
-  // 'flat' with likely 'improved' / 'worse' when only the 80% CI excludes 0; plain 'flat' otherwise.
-  function tiers(res, md, lo80, hi80, better) {
+  // 'flat' with likely 'improved' / 'worse' when only the 80% CI excludes 0; 'flat' with possible 'improved' / 'worse'
+  // when only the 50% CI excludes 0; plain 'flat' otherwise.
+  function tiers(res, md, lo80, hi80, better, lo50, hi50) {
     const good = better === 'down' ? md < 0 : md > 0;
+    const dir = better === 'neutral' ? (md > 0 ? 'up' : 'down') : good ? 'improved' : 'worse';
     res.slight = res.sig && Math.abs(res.pct) < SLIGHT_PCT;
-    res.likely = !res.sig && (lo80 > 0 || hi80 < 0) ? (better === 'neutral' ? (md > 0 ? 'up' : 'down') : good ? 'improved' : 'worse') : null;
+    res.likely = !res.sig && (lo80 > 0 || hi80 < 0) ? dir : null;
+    res.possible = !res.sig && !res.likely && (lo50 > 0 || hi50 < 0) ? dir : null;
     return good;
   }
   // Weighted mean. All weights zero or missing = plain mean.
@@ -273,7 +280,8 @@ window.AID = window.AID || {};
       res.sig = sig;
       const h80 = tCrit80(res.df) * res.se;
       const lo80 = res.log ? Math.exp(md - h80) - 1 : (md - h80) / res.base, hi80 = res.log ? Math.exp(md + h80) - 1 : (md + h80) / res.base;
-      const good = tiers(res, md, lo80, hi80, meta.better);
+      const h50 = tCrit50(res.df) * res.se;
+      const good = tiers(res, md, lo80, hi80, meta.better, (md - h50) / Math.abs(res.base || 1), (md + h50) / Math.abs(res.base || 1));
       res.good = good;
       res.wide = !sig && !res.likely && res.hi - res.lo > WIDE_CI;
       res.status = !sig ? 'flat' : meta.better === 'neutral' ? (md > 0 ? 'up' : 'down') : good ? 'improved' : 'worse';
@@ -801,13 +809,13 @@ window.AID = window.AID || {};
       for (const o of obs) { sw += o.w; sy += o.w * (o.y - b * o.s); }
       const base = sy / sw;
       if (!(Math.abs(base) > 0)) return res;
-      const h = tCrit(G - 1) * se, h80 = tCrit80(G - 1) * se, ab = Math.abs(base);
+      const h = tCrit(G - 1) * se, h80 = tCrit80(G - 1) * se, h50 = tCrit50(G - 1) * se, ab = Math.abs(base);
       const sig = b - h > 0 || b + h < 0;
       Object.assign(res, {
         before: base, after: base + b, diff: b, pct: b / ab, lo: (b - h) / ab, hi: (b + h) / ab, sePct: se / ab, md: b, se, df: G - 1,
         sig,
       });
-      const good = tiers(res, b, (b - h80) / ab, (b + h80) / ab, meta.better);
+      const good = tiers(res, b, (b - h80) / ab, (b + h80) / ab, meta.better, (b - h50) / ab, (b + h50) / ab);
       res.good = good;
       res.wide = !sig && !res.likely && (2 * h) / ab > WIDE_CI;
       res.status = !sig ? 'flat' : good ? 'improved' : 'worse';

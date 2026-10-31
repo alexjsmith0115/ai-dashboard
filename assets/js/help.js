@@ -227,6 +227,7 @@ window.AID = window.AID || {};
         'Improved: the 95% CI is fully on the better side of 0. Worse: fully on the worse side. No clear change: the CI includes 0.',
         'Slight improvement / Slightly worse: the 95% CI excludes 0, but the effect is under {slight}%. Clear, but small.',
         'Likely improved / Likely worse: the 95% CI includes 0, but the 80% CI does not. The direction is probable, not established. The verdict does not count these.',
+        'Possibly improved / Possibly worse: the 80% CI includes 0, but the 50% CI does not. This is a weak sign only. When AI has no effect, about 3 results in 10 land here by chance. The verdict does not count these.',
         'For cycle time, time to merge, reopen rate, and spend per merged PR, lower is better. A negative change there is "Improved".',
         'For metrics with no better direction (for example, lines added), the labels are "Increased" and "Decreased".',
       ],

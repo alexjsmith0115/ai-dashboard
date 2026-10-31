@@ -224,6 +224,11 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 60px; }
 .chip.likely-good { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--good) 55%, transparent); color: var(--good-text); background: transparent; }
 .chip.likely-bad { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--critical) 50%, transparent); color: var(--critical-text); background: transparent; }
 .chip.likely { box-shadow: inset 0 0 0 1px var(--border); background: transparent; }
+/* "Possibly" tier: only the 50% CI excludes 0. Dashed outline, muted text with the direction's color on the icon only. */
+.chip.possible-good, .chip.possible-bad, .chip.possible { border: 1px dashed var(--border); padding: 1px 8px 1px 6px; background: transparent; color: var(--text-2); font-weight: 500; }
+.chip.possible-good svg { color: var(--good-text); }
+.chip.possible-bad svg { color: var(--critical-text); }
+.chip.big.possible-good, .chip.big.possible-bad, .chip.big.possible { padding: 3px 11px 3px 8px; }
 .chip.big { font-size: 14px; padding: 4px 12px 4px 9px; }
 .chip.big svg { width: 16px; height: 16px; }
 

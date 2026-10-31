@@ -40,6 +40,18 @@ window.AID = window.AID || {};
     for (let i = T95.length - 1; i >= 0; i--) if (df >= T95[i][0]) { v = T95[i][1]; break; }
     return df > 120 ? 1.96 : v;
   }
+  // Standard error of a mean, clustered by group (team). Developers on one team share re-orgs, incidents, and code, so
+  // their effects are not independent. With fewer than 2 groups, the plain SE across values is used.
+  function clusterSE(vals, groups) {
+    const n = vals.length, m = mean(vals);
+    const byG = new Map();
+    vals.forEach((v, i) => byG.set(groups[i], (byG.get(groups[i]) || 0) + (v - m)));
+    const G = byG.size;
+    if (G < 2) return { se: sd(vals) / Math.sqrt(n), df: n - 1 };
+    let s = 0;
+    for (const x of byG.values()) s += x * x;
+    return { se: Math.sqrt(s * (G / (G - 1))) / n, df: G - 1 };
+  }
   function pearson(x, y) {
     const n = x.length;
     if (n < 3) return null;
@@ -207,9 +219,9 @@ window.AID = window.AID || {};
 
     // Turns a mean difference (md), its standard error (se), and a baseline into the common result shape:
     // % change, 95% CI, statistical status, and score (positive = better, whatever the metric's direction).
-    function finish(res, md, se, n, base) {
+    function finish(res, md, se, n, base, df) {
       const meta = AID.M[res.key] || {};
-      const h = tCrit(n - 1) * se;
+      const h = tCrit(df != null ? df : n - 1) * se;
       base = Math.abs(base);
       Object.assign(res, { diff: md, pct: md / base, lo: (md - h) / base, hi: (md + h) / base, sePct: se / base });
       res.wide = (2 * h) / base > WIDE_CI;
@@ -244,7 +256,7 @@ window.AID = window.AID || {};
     // 1. Fit y = developer effect + calendar-month effect on untreated months only:
     //    every month of non-adopters, and the months before adoption for adopters.
     // 2. For each adopter month after adoption, expected = developer effect + month effect. Effect = actual − expected.
-    // 3. Average the effect per developer, then across developers. The CI comes from the spread across developers.
+    // 3. Average the effect per developer, then across developers. The CI comes from the spread across developers, clustered by team.
     // Developer effects remove fixed differences (skill, level, team). Month effects remove company-wide changes
     // (seasonality, re-orgs, process changes). Staggered adoption dates are handled because adopters are never
     // used as the comparison for each other after they adopt.
@@ -343,13 +355,14 @@ window.AID = window.AID || {};
     // base: as in compare(). Subgroups pass the expected value for all adopters in the selection.
     function did(key, devList, ctl, base) {
       const fit = didFit(key, ctl);
-      const per = [];
-      for (const d of devList || devs) { const x = fit.devEffects.get(d); if (x) per.push(x); }
+      const per = [], teams = [];
+      for (const d of devList || devs) { const x = fit.devEffects.get(d); if (x) { per.push(x); teams.push(d.team); } }
       const n = per.length;
       const res = { key, n, method: 'did', control: fit.control, before: mean(per.map((x) => x.yhat)), after: mean(per.map((x) => x.y)), status: 'nodata' };
       if (n < 2 || !res.before) return res;
-      const taus = per.map((x) => x.tau);
-      return finish(res, mean(taus), sd(taus) / Math.sqrt(n), n, base || res.before);
+      const c = clusterSE(per.map((x) => x.tau), teams);
+      res.teams = new Set(teams).size;
+      return finish(res, mean(per.map((x) => x.tau)), c.se, n, base || res.before, c.df);
     }
 
     // Effect by month relative to adoption. Months before adoption show the leftover difference from the fitted
@@ -366,8 +379,8 @@ window.AID = window.AID || {};
         const n = b.length;
         const row = { k, n, post: k >= 0 };
         if (n >= MIN_CONTROL_DEVS && base) {
-          const es = b.map((x) => x.e);
-          const m = mean(es), h = tCrit(n - 1) * sd(es) / Math.sqrt(n);
+          const es = b.map((x) => x.e), c = clusterSE(es, b.map((x) => x.d.team));
+          const m = mean(es), h = tCrit(c.df) * c.se;
           Object.assign(row, { pct: m / base, lo: (m - h) / base, hi: (m + h) / base, wide: (2 * h) / base > WIDE_CI });
         }
         out.push(row);

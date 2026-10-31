@@ -302,7 +302,7 @@ window.AID = window.AID || {};
   // ---------------- Event study ----------------
   function eventStudyCard(ctx, metric) {
     const meta = AID.M[metric];
-    // Months with a CI wider than WIDE_CI are not drawn: their value says nothing.
+    // Months with a CI wider than WIDE_CI and an 80% CI that includes 0 are not drawn: their value says nothing.
     const rows = ctx.eventStudy(metric).map((r) => (r.wide ? Object.assign({}, r, { pct: null, lo: null, hi: null }) : r));
     const wide = rows.filter((r) => r.wide).length;
     const labels = rows.map((r) => (r.k > 0 ? '+' + r.k : String(r.k)));
@@ -447,13 +447,13 @@ window.AID = window.AID || {};
     }
     const small = rows.filter((r) => r.n < ctx.minGroup).length, wide = rows.length - reliable.length - small;
     if (small) ins.appendChild(el('li', el('span', { text: small + ' ' + levelLabel + (small > 1 ? 's have' : ' has') + ' fewer than ' + ctx.minGroup + ' adopters with months before and after adoption. They are left out of the chart and ranking, and shown pale in the table.' })));
-    if (wide) ins.appendChild(el('li', el('span', { text: wide + ' ' + levelLabel + (wide > 1 ? 's have' : ' has') + ' a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts, which is too uncertain to read. They are left out of the chart and ranking, and shown pale in the table.' })));
+    if (wide) ins.appendChild(el('li', el('span', { text: wide + ' ' + levelLabel + (wide > 1 ? 's have' : ' has') + ' a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts and an 80% CI that includes 0, which is too uncertain to read. They are left out of the chart and ranking, and shown pale in the table.' })));
     wrap.appendChild(el('div.card', el('div.card-title', { style: { marginBottom: '10px' } }, el('h3', { text: 'Key findings', style: { fontSize: '15px' } }), AID.help.button('c-groups')), ins));
 
     const grid = el('div.grid-3-2');
     wrap.appendChild(grid);
 
-    // Ranked diverging bars. Groups with a small sample or a very wide CI are never drawn.
+    // Ranked diverging bars. Groups with a small sample, or a very wide CI and no clear or likely direction, are never drawn.
     const ranked = reliable;
     let shown = ranked, note = '';
     if (ranked.length > BAR_LIMIT) {
@@ -570,7 +570,7 @@ window.AID = window.AID || {};
     }
     const tierIdx = [1, 2];
     const hidden = data.reduce((s, r) => s + tierIdx.filter((ti) => r.cells[ti].lowSample && r.cells[ti].devCount > 0).length, 0);
-    if (hidden) ins.appendChild(el('li', el('span', { text: hidden + ' cell' + (hidden > 1 ? 's are' : ' is') + ' hidden from the chart: fewer than ' + ctx.minGroup + ' developers with enough data, or a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts.' })));
+    if (hidden) ins.appendChild(el('li', el('span', { text: hidden + ' cell' + (hidden > 1 ? 's are' : ' is') + ' hidden from the chart: fewer than ' + ctx.minGroup + ' developers with enough data, or a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts and an 80% CI that includes 0.' })));
 
     // Grouped bars: one group per row value, one bar per usage tier.
     const cellOf = (si, i) => data[i].cells[tierIdx[si]];
@@ -587,7 +587,7 @@ window.AID = window.AID || {};
         : 'Each bar = actual minus expected without AI, for adopters in that tier, as a % of the expected value for all adopters. Non-adopters have no AI months, so they have no bar.' + (meta.better === 'down' ? ' Lower is better for this metric, so a negative effect is an improvement.' : '')) +
         ' Whiskers = 95% confidence interval.',
     });
-    if (!series.some((x) => x.values.some((v) => v != null))) c.empty(ctx.noBeforeText && lift ? ctx.noBeforeText : 'Every cell has fewer than ' + ctx.minGroup + ' developers with enough data, or a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts. See the table.');
+    if (!series.some((x) => x.values.some((v) => v != null))) c.empty(ctx.noBeforeText && lift ? ctx.noBeforeText : 'Every cell has fewer than ' + ctx.minGroup + ' developers with enough data, or a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts and an 80% CI that includes 0. See the table.');
     else queueMicrotask(() => AID.charts.grouped(c.canvas, {
       labels: data.map((r) => r.row), series,
       axisFmt: (v) => Math.round(v * 100) + (lift ? ' pts' : '%'),

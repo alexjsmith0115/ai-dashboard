@@ -219,7 +219,7 @@ window.AID = window.AID || {};
     const c = el('section.card');
     c.appendChild(el('div.card-head',
       el('div', titleRow('Impact by group, every key metric', 'c-groupheat'),
-        el('p.sub', { text: 'Before → after change per group, as a % of the before value for all developers, so groups compare on one scale. Blue = better, red = worse (lower is better for cycle time, time to merge, and reopen rate). Pale cells are not statistically clear, have a small sample, or have a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts. Rows are sorted by PRs merged (Level × usage: by level, then usage tier).' })),
+        el('p.sub', { text: 'Before → after change per group, as a % of the before value for all developers, so groups compare on one scale. Blue = better, red = worse (lower is better for cycle time, time to merge, and reopen rate). Pale cells are not statistically clear, have a small sample, or have a 95% CI wider than ' + AID.analysis.WIDE_CI * 100 + ' pts and an 80% CI that includes 0. Rows are sorted by PRs merged (Level × usage: by level, then usage tier).' })),
       el('div.card-controls', seg('Group', AID.GROUPS.map((g) => ({ value: g.key, label: g.label })).concat([{ value: 'levelTier', label: 'Level × usage' }]), level, (v) => set({ gcGroup: v })))));
 
     const tbl = el('table.heat');

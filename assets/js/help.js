@@ -210,7 +210,7 @@ window.AID = window.AID || {};
         'For each job level (or org): the before/after % change of each usage tier, minus the before/after % change of the non-adopters at the same level.',
         'The 95% CI uses the standard errors of both cells.',
         'The % changes divide by the average before value for all developers in the selection, so all cells use one scale.',
-        'Cells with fewer than {minGroup} developers, or with a 95% CI wider than 200 pts, are hidden.',
+        'Cells with fewer than {minGroup} developers, or with a 95% CI wider than 200 pts and an 80% CI that includes 0, are hidden.',
       ],
       read: [
         '+20 pts for high-usage SDE2s means: high-usage SDE2s improved 20 percentage points more than non-adopter SDE2s over the same months.',
@@ -232,6 +232,7 @@ window.AID = window.AID || {};
       ],
       read: [
         'A narrow CI means the result is precise. A wide CI means few developers or a large spread between them.',
+        'A result with a 95% CI wider than 200 pts and an 80% CI that includes 0 shows as "Too uncertain". A wide result still shows its status when the 95% CI or the 80% CI excludes 0 (Improved, Worse, or Likely): the direction is known, but the size is not. Example: a 95% CI from −5% to +200% shows as Likely improved.',
         '"No clear change" does not mean "no effect". It means the data cannot tell the effect apart from noise.',
         'Pale bars and pale heatmap cells are not statistically clear.',
       ],
@@ -322,7 +323,7 @@ window.AID = window.AID || {};
       ],
       watch: [
         'Later points have fewer developers and a wider band.',
-        'A month with a 95% CI wider than 200 pts is not drawn. The axis stops near the points, so a very wide band is cut at the chart edge.',
+        'A month with a 95% CI wider than 200 pts and an 80% CI that includes 0 is not drawn. The axis stops near the points, so a very wide band is cut at the chart edge.',
       ],
       see: ['m-event', 'm-did'],
     },
@@ -359,7 +360,7 @@ window.AID = window.AID || {};
         'Each bar is the AI effect averaged over the adopters in that group. The model itself is fitted on all developers.',
         'The % divides by the average expected value for all adopters, not the group\'s own, so groups compare on one scale.',
         'Each group\'s estimate is pulled toward its parent group (domain for teams, org for domains, all groups otherwise) in proportion to its own noise: a precise group keeps its value, a noisy group moves most of the way. The pull strength comes from the data: the spread between groups beyond their own noise. With no real differences every group goes to the pooled value; with large real differences nothing moves. The table shows the raw estimate and the pull. Settings (Group estimates) turns it off. The headline, tiles, tiers, and event study never move.',
-        'Groups with fewer than {minGroup} adopters with enough data, or with a 95% CI wider than 200 pts, are left out of the chart and the ranking. If no group is left, the chart is empty.',
+        'Groups with fewer than {minGroup} adopters with enough data, or with a 95% CI wider than 200 pts and an 80% CI that includes 0, are left out of the chart and the ranking. If no group is left, the chart is empty.',
         'With more than 20 groups, the chart shows the top 10 and the bottom 10. The table lists all of them.',
       ],
       read: [
@@ -390,7 +391,7 @@ window.AID = window.AID || {};
         'Adopters = adopters with {minMonths}+ months before and after adoption.',
         'Expected = the average value without AI. Actual = the average value. AI effect = (actual − expected) ÷ the expected value for all adopters.',
       ],
-      read: ['Click a column header to sort. Pale rows have a small sample ("Small sample") or a 95% CI wider than 200 pts ("Too uncertain").'],
+      read: ['Click a column header to sort. Pale rows have a small sample ("Small sample") or a 95% CI wider than 200 pts and an 80% CI that includes 0 ("Too uncertain").'],
       see: ['m-did', 'm-samples'],
     },
     {
@@ -400,7 +401,7 @@ window.AID = window.AID || {};
         'AI effect view: each bar = the AI effect for adopters at that level and tier. Non-adopters have no AI months, so they have no bar.',
         'Lift view: each bar = the tier\'s before/after change minus the change of non-adopters at the same level, in percentage points.',
         'Each % divides by the value for all adopters (AI effect) or all developers (Lift), so all cells use one scale.',
-        'Whiskers = 95% CI. Cells with fewer than {minGroup} developers, or with a CI wider than 200 pts, are hidden. A whisker that goes past the axis ends in an arrow.',
+        'Whiskers = 95% CI. Cells with fewer than {minGroup} developers, or with a 95% CI wider than 200 pts and an 80% CI that includes 0, are hidden. A whisker that goes past the axis ends in an arrow.',
       ],
       read: [
         'Compare the High bar with the Low bar at each level. A large gap at one level means AI helps that level most.',
@@ -453,7 +454,7 @@ window.AID = window.AID || {};
       short: 'The before/after change of each key metric for each group, as a colored table.',
       how: [
         'Each cell uses the before/after method for that group and metric. The % divides by the average before value for all developers, so groups compare on one scale.',
-        'Color strength grows with the size of the change, up to ±30%. Pale cells are not statistically clear, have fewer than {minGroup} developers, or have a 95% CI wider than 200 pts.',
+        'Color strength grows with the size of the change, up to ±30%. Pale cells are not statistically clear, have fewer than {minGroup} developers, or have a 95% CI wider than 200 pts and an 80% CI that includes 0.',
         'Level × usage gives one row per job level and usage tier.',
       ],
       read: ['Blue = better, red = worse. For cycle time, time to merge, and reopen rate, lower is better, so a fall is blue.'],

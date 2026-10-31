@@ -10,7 +10,9 @@ window.AID = window.AID || {};
   // Both AI tools count in every view, so the start month (and the onboarding months left out) is the same for each AI tool view.
   const WORK_KEYS = ['prsOpened', 'prsMerged', 'throughput', 'thoughputWithSubtasks', 'storyPoints', 'additions', 'activeDays', 'copilotActiveDays'];
   const MIN_CONTROL_DEVS = 10;
-  const WIDE_CI = 2;             // a 95% CI wider than this (200 % points) is too uncertain to show as a bar or point   // DiD: a month needs this many untreated developer-months to estimate its month effect
+  const WIDE_CI = 2;             // a 95% CI wider than this (200 % points) is too uncertain to show as a bar or point,
+                                 // but only when the 80% CI includes 0. If the 95% or the 80% CI excludes 0, the result shows with its
+                                 // status (clear or likely): the direction is known, only the size is not.
   const OTHER = 'Other';
   const MIN_TEAMS = 8;           // team-level effect: fewer teams than this = not enough data
   const BUG_WINDOW = 3;          // bug rate = bugs found ÷ PRs merged, over this many months
@@ -265,7 +267,6 @@ window.AID = window.AID || {};
       const meta = AID.M[res.key] || {};
       if (res.log) Object.assign(res, { diff: md, pct: Math.exp(md) - 1, lo: Math.exp(md - h) - 1, hi: Math.exp(md + h) - 1, sePct: res.se });
       else Object.assign(res, { diff: md, pct: md / res.base, lo: (md - h) / res.base, hi: (md + h) / res.base, sePct: res.se / res.base });
-      res.wide = res.hi - res.lo > WIDE_CI;
       // Usage that starts near zero (most AI usage metrics before rollout) makes % change meaningless.
       res.fromZero = !res.log && !!meta.usage && res.base < 0.1 * Math.abs(res.after);
       const sig = res.lo > 0 || res.hi < 0;
@@ -274,6 +275,7 @@ window.AID = window.AID || {};
       const lo80 = res.log ? Math.exp(md - h80) - 1 : (md - h80) / res.base, hi80 = res.log ? Math.exp(md + h80) - 1 : (md + h80) / res.base;
       const good = tiers(res, md, lo80, hi80, meta.better);
       res.good = good;
+      res.wide = !sig && !res.likely && res.hi - res.lo > WIDE_CI;
       res.status = !sig ? 'flat' : meta.better === 'neutral' ? (md > 0 ? 'up' : 'down') : good ? 'improved' : 'worse';
       res.score = meta.better === 'down' ? -res.pct : res.pct;
       return res;
@@ -450,10 +452,10 @@ window.AID = window.AID || {};
         const row = { k, n, post: k >= 0 };
         if (n >= MIN_CONTROL_DEVS && (lg || base)) {
           const es = b.map((x) => x.e), c = clusterSE(es, b.map((x) => x.d.team));
-          const m = mean(es), h = tCrit(c.df) * c.se;
+          const m = mean(es), h = tCrit(c.df) * c.se, h80 = tCrit80(c.df) * c.se;
           if (lg) Object.assign(row, { pct: Math.exp(m) - 1, lo: Math.exp(m - h) - 1, hi: Math.exp(m + h) - 1 });
           else Object.assign(row, { pct: m / base, lo: (m - h) / base, hi: (m + h) / base });
-          row.wide = row.hi - row.lo > WIDE_CI;
+          row.wide = Math.abs(m) <= h80 && row.hi - row.lo > WIDE_CI; // 80% CI includes 0 and the 95% CI is very wide
         }
         out.push(row);
       }
@@ -571,11 +573,11 @@ window.AID = window.AID || {};
         const base = cells[0];
         for (const c of cells.slice(1)) {
           if (c.lowSample || base.lowSample) continue;
-          const h = 1.96 * Math.sqrt(c.sePct ** 2 + base.sePct ** 2);
+          const se = Math.sqrt(c.sePct ** 2 + base.sePct ** 2), h = 1.96 * se;
           c.lift = c.score - base.score;
           c.liftLo = c.lift - h; c.liftHi = c.lift + h;
           c.liftSig = c.liftLo > 0 || c.liftHi < 0;
-          if (c.liftHi - c.liftLo > WIDE_CI) { c.lowSample = true; c.wide = true; } // lift too uncertain to show
+          if (Math.abs(c.lift) <= 1.2816 * se && c.liftHi - c.liftLo > WIDE_CI) { c.lowSample = true; c.wide = true; } // lift too uncertain to show
         }
         return { row: rv, cells, devCount: inRow.length };
       });
@@ -803,10 +805,11 @@ window.AID = window.AID || {};
       const sig = b - h > 0 || b + h < 0;
       Object.assign(res, {
         before: base, after: base + b, diff: b, pct: b / ab, lo: (b - h) / ab, hi: (b + h) / ab, sePct: se / ab, md: b, se, df: G - 1,
-        wide: (2 * h) / ab > WIDE_CI, sig,
+        sig,
       });
       const good = tiers(res, b, (b - h80) / ab, (b + h80) / ab, meta.better);
       res.good = good;
+      res.wide = !sig && !res.likely && (2 * h) / ab > WIDE_CI;
       res.status = !sig ? 'flat' : good ? 'improved' : 'worse';
       res.score = meta.better === 'down' ? -res.pct : res.pct;
       return res;

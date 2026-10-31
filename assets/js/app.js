@@ -11,7 +11,7 @@ window.AID = window.AID || {};
     showSettings: false,
     tool: 'cursor',
     filters: { org: '', domain: '', team: '', level: '', icOnly: true, from: '', to: '' },
-    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12, tierBasis: 'days' },
+    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12, tierBasis: 'days', logScale: 'times' },
     exec: { metric: 'prsMerged', groupBy: 'org', crossBy: 'level', crossMode: 'did' },
     explore: {
       trendMetric: 'prsMerged', trendGroup: 'tier', trendX: 'calendar', trendAgg: 'mean',
@@ -210,6 +210,8 @@ window.AID = window.AID || {};
       numField('Ramp-up months to skip', s.ramp, 0, 6, (n) => setS({ ramp: n }), 'Months right after the split that count as neither before nor after.'),
       numField('New-hire onboarding months to skip', s.onboard, 0, 12, (n) => setS({ onboard: n }), 'A new hire is a developer whose first month of work is after the first month in the data. Their first months are left out of all results.'),
       numField('Minimum developers per group', s.minGroup, 2, 30, (n) => setS({ minGroup: n }), 'Groups and job level × usage cells with fewer developers (with enough months before and after) are hidden from charts and flagged "Small sample". Small groups give wide, unreliable confidence intervals.'),
+      el('div', select('Log scale for the AI effect', [{ value: 'times', label: 'Times only (cycle time, hours)' }, { value: 'all', label: 'Times and counts' }, { value: 'none', label: 'None' }], s.logScale || 'times', (v) => setS({ logScale: v })),
+        el('p.help', { text: 'On the log scale the effect is a ratio for the typical developer, and one very long ticket or one huge month cannot dominate. Times are always positive, so log is their natural scale. Counts use log(value + 1) because of zero months, which adds a small dependence on the +1. Rates are never logged.' })),
       el('div', select('Usage tier based on', [{ value: 'days', label: 'Active days' }, { value: 'spend', label: 'Spend' }], s.tierBasis, (v) => setS({ tierBasis: v })),
         el('p.help', { text: s.tierBasis === 'spend'
           ? 'Low and High = the developers split at the median of average ' + AID.M.spendDollars.label + ' per month in the after period' + (ctx && ctx.spendCuts ? ' (' + AID.fmt.value(ctx.spendCuts[0], 'usd') + ')' : '') + '. Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.' + (ctx && ctx.tierBasis !== 'spend' ? ' The data has no spend values, so active days are used.' : '')

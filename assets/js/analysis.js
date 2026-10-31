@@ -240,15 +240,22 @@ window.AID = window.AID || {};
 
     // Turns a mean difference (md), its standard error (se), and a baseline into the common result shape:
     // % change, 95% CI, statistical status, and score (positive = better, whatever the metric's direction).
-    function finish(res, md, se, n, base, df) {
+    // log: md and se are on the log scale (didFit with a log metric). The % is then a ratio − 1 and needs no base.
+    function finish(res, md, se, n, base, df, log) {
+      df = df != null ? df : n - 1;
+      Object.assign(res, { md, se, df, log: !!log, base: log ? null : Math.abs(base) });
+      return applyCI(res, md, tCrit(df) * se);
+    }
+    // Writes pct / lo / hi / status / score for an estimate md with CI half-width h, in the result's own units.
+    // Shrinkage (didByGroup) calls it again with a new md and h.
+    function applyCI(res, md, h) {
       const meta = AID.M[res.key] || {};
-      const h = tCrit(df != null ? df : n - 1) * se;
-      base = Math.abs(base);
-      Object.assign(res, { diff: md, pct: md / base, lo: (md - h) / base, hi: (md + h) / base, sePct: se / base });
-      res.wide = (2 * h) / base > WIDE_CI;
+      if (res.log) Object.assign(res, { diff: md, pct: Math.exp(md) - 1, lo: Math.exp(md - h) - 1, hi: Math.exp(md + h) - 1, sePct: res.se });
+      else Object.assign(res, { diff: md, pct: md / res.base, lo: (md - h) / res.base, hi: (md + h) / res.base, sePct: res.se / res.base });
+      res.wide = res.hi - res.lo > WIDE_CI;
       // Usage that starts near zero (most AI usage metrics before rollout) makes % change meaningless.
-      res.fromZero = !!meta.usage && base < 0.1 * Math.abs(res.after);
-      const sig = md - h > 0 || md + h < 0;
+      res.fromZero = !res.log && !!meta.usage && res.base < 0.1 * Math.abs(res.after);
+      const sig = res.lo > 0 || res.hi < 0;
       res.sig = sig;
       const good = meta.better === 'down' ? md < 0 : md > 0;
       res.good = good;
@@ -256,6 +263,21 @@ window.AID = window.AID || {};
       res.score = meta.better === 'down' ? -res.pct : res.pct;
       return res;
     }
+
+    // Log scale for the AI effect. Times (days, hours) are positive and skewed: one 40-day ticket moves a mean a lot,
+    // and on the log scale the effect is a ratio, which is what the % shows anyway. Counts can have zero months, so they
+    // use log(y + 1), which depends a little on the +1; they are linear unless settings.logScale = 'all'. Rates stay linear.
+    const LOG_FLOOR = { days: 1 / 24, hours: 0.1 }; // a 0 time is set to this before the log
+    const logScale = ['times', 'all', 'none'].includes(s.logScale) ? s.logScale : 'times';
+    function logOf(key) {
+      const m = AID.M[key];
+      if (!m || logScale === 'none') return null;
+      if (m.unit === 'days' || m.unit === 'hours') return { c: 0, floor: LOG_FLOOR[m.unit] };
+      if (m.unit === 'count' && logScale === 'all') return { c: 1, floor: 0 };
+      return null;
+    }
+    const toLog = (y, lg) => Math.log(Math.max(y, lg.floor) + lg.c);
+    const fromLog = (v, lg) => Math.exp(v) - lg.c;
 
     // Paired before/after comparison across developers. Each developer is compared with their own baseline.
     // base = denominator for the % (default: this list's own before value). Subgroups pass the value for all developers
@@ -301,12 +323,14 @@ window.AID = window.AID || {};
       const T = ds.months[ds.months.length - 1] - t0 + 1;
       // Volume weight: for a median or rate, the count it was measured over (AID.M[key].volume). Counts weigh 1.
       const vol = (AID.M[key] || {}).volume;
+      const lg = logOf(key);
       const obs = [];
       for (const d of didPool) {
         const a = d.adoptIdx;
         for (const r of rowsOf(d)) {
-          const y = r.v[key];
+          let y = r.v[key];
           if (!isNum(y)) continue;
+          if (lg) y = toLog(y, lg);
           const k = a == null ? null : r.mi - a;
           const treated = k != null && k >= 0;
           if (treated && k < ramp) continue; // ramp-up months count as neither side
@@ -371,7 +395,7 @@ window.AID = window.AID || {};
       // Developers with at least one month in the comparison group.
       const ctrlDevs = (adopter) => new Set(ctrl.filter((o) => (o.k != null) === adopter).map((o) => o.d)).size;
       const res = {
-        key, control: ctl, devEffects, pre, post, dropped, minCtrl,
+        key, control: ctl, devEffects, pre, post, dropped, minCtrl, log: lg,
         nonAdopters: ctrlDevs(false), notYet: ctrlDevs(true), otherMonths: obs.filter((o) => o.other).length,
       };
       didCache.set(ck, res);
@@ -385,31 +409,35 @@ window.AID = window.AID || {};
       const fit = didFit(key, ctl);
       const per = [], teams = [];
       for (const d of devList || devs) { const x = fit.devEffects.get(d); if (x) { per.push(x); teams.push(d.team); } }
-      const n = per.length;
-      const res = { key, n, method: 'did', control: fit.control, before: mean(per.map((x) => x.yhat)), after: mean(per.map((x) => x.y)), status: 'nodata' };
-      if (n < 2 || !res.before) return res;
+      const n = per.length, lg = fit.log;
+      // On the log scale, before / after are geometric means: the typical developer's value, not the group total.
+      const back = (v) => (lg && v != null ? fromLog(v, lg) : v);
+      const res = { key, n, method: 'did', control: fit.control, before: back(mean(per.map((x) => x.yhat))), after: back(mean(per.map((x) => x.y))), status: 'nodata' };
+      if (n < 2 || (!lg && !res.before)) return res;
       const taus = per.map((x) => x.tau), c = clusterSE(taus, teams);
       res.teams = new Set(teams).size; res.clustered = c.clustered;
-      return finish(res, mean(taus), c.se, n, base || res.before, c.df);
+      return finish(res, mean(taus), c.se, n, base || res.before, c.df, !!lg);
     }
 
     // Effect by month relative to adoption. Months before adoption show the leftover difference from the fitted
     // path (should be near zero with no trend if adopters were not already improving). Months 0+ are the effect.
     function eventStudy(key, devList, opts) {
       const o = Object.assign({ from: -6, to: 12 }, opts);
-      const fit = didFit(key);
+      const fit = didFit(key), lg = fit.log;
       const inSet = new Set(devList || devs);
-      // One denominator for every month: the average expected value for these adopters.
+      // One denominator for every month: the average expected value for these adopters (not needed on the log scale).
       const base = Math.abs(did(key, devList).before || 0);
       const out = [];
       for (let k = o.from; k <= o.to; k++) {
         const b = ((k < 0 ? fit.pre : fit.post).get(k) || []).filter((x) => inSet.has(x.d));
         const n = b.length;
         const row = { k, n, post: k >= 0 };
-        if (n >= MIN_CONTROL_DEVS && base) {
+        if (n >= MIN_CONTROL_DEVS && (lg || base)) {
           const es = b.map((x) => x.e), c = clusterSE(es, b.map((x) => x.d.team));
           const m = mean(es), h = tCrit(c.df) * c.se;
-          Object.assign(row, { pct: m / base, lo: (m - h) / base, hi: (m + h) / base, wide: (2 * h) / base > WIDE_CI });
+          if (lg) Object.assign(row, { pct: Math.exp(m) - 1, lo: Math.exp(m - h) - 1, hi: Math.exp(m + h) - 1 });
+          else Object.assign(row, { pct: m / base, lo: (m - h) / base, hi: (m + h) / base });
+          row.wide = row.hi - row.lo > WIDE_CI;
         }
         out.push(row);
       }

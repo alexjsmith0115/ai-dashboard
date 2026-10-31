@@ -252,8 +252,9 @@ window.AID = window.AID || {};
     return tile(m.label, m.source, c.wide ? 'Too uncertain' : c.pct != null ? F.pct(c.pct) : '—', '', tone,
       [kpiChip(c), el('span', { text: c.pct != null ? F.metric(c.after, c.key, { short: true }) + ' vs ' + F.metric(c.before, c.key, { short: true }) + ' expected' + unit : 'Not enough data' })],
       s ? AID.charts.sparkline(s.values, { markerIndex: markerIdx }) : null,
-      c.lo != null ? ciText(c) : null, 'metric:' + c.key);
+      c.lo != null ? ciText(c) : null, 'metric:' + c.key, ciRange(c));
   }
+  const ciRange = (c) => (c.lo != null ? F.pct(c.lo, 0) + ' to ' + F.pct(c.hi, 0) : null);
 
   function teamTile(ctx, key, markerIdx) {
     const m = AID.TM[key];
@@ -266,7 +267,7 @@ window.AID = window.AID || {};
     return tile(m.label, 'Team', c.wide ? 'Too uncertain' : c.pct != null ? F.pct(c.pct) : '—', '', tone,
       [kpiChip(c), el('span', { text: c.pct != null ? v(c.before) + ' → ' + v(c.after) + ' from 0% to 100% team adoption · ' + c.n + ' teams' : c.n ? 'Not enough data: ' + c.n + ' teams (needs ' + AID.analysis.MIN_TEAMS + '+)' : 'Not enough data' })],
       AID.charts.sparkline(ctx.teamSeries(key), { markerIndex: markerIdx }),
-      c.lo != null ? ciText(c) : null, 'm-team');
+      c.lo != null ? ciText(c) : null, 'm-team', ciRange(c));
   }
 
   // Share of before-period and after-period developer-months that pass a test.
@@ -288,10 +289,11 @@ window.AID = window.AID || {};
       el('div.kpi-meta', el('span', { text })));
   }
 
-  function tile(label, src, value, unit, tone, meta, spark, title, helpId) {
+  // ci: the 95% CI as text, shown next to the value so nobody reads the number without its range.
+  function tile(label, src, value, unit, tone, meta, spark, title, helpId, ci) {
     return el('div.card.kpi',
       el('div.kpi-label', el('span.kpi-name', el('span', { text: label }), helpId ? AID.help.button(helpId) : null), el('span.src', { text: src })),
-      el('div.kpi-value' + (tone ? '.' + tone : ''), { title: title || null }, value, unit ? el('span.unit', { text: unit }) : null),
+      el('div.kpi-value' + (tone ? '.' + tone : ''), { title: title || null }, value, unit ? el('span.unit', { text: unit }) : null, ci ? el('span.kpi-ci', { text: ci, title: '95% confidence interval' }) : null),
       el('div.kpi-meta', meta),
       el('div.kpi-spark', spark));
   }

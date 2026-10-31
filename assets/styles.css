@@ -220,6 +220,10 @@ main { max-width: 1440px; margin: 0 auto; padding: 20px 24px 60px; }
 .chip.good { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good-text); }
 .chip.bad { background: color-mix(in srgb, var(--critical) 15%, transparent); color: var(--critical-text); }
 .chip.warn { background: color-mix(in srgb, var(--warning) 22%, transparent); color: var(--text); }
+/* "Likely" tier: the direction is probable, not established. Outlined in the direction's color, no fill. */
+.chip.likely-good { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--good) 55%, transparent); color: var(--good-text); background: transparent; }
+.chip.likely-bad { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--critical) 50%, transparent); color: var(--critical-text); background: transparent; }
+.chip.likely { box-shadow: inset 0 0 0 1px var(--border); background: transparent; }
 .chip.big { font-size: 14px; padding: 4px 12px 4px 9px; }
 .chip.big svg { width: 16px; height: 16px; }
 

@@ -97,12 +97,13 @@ window.AID = window.AID || {};
       parts.push(worse ? [', ', el('strong', { text: String(worse) }), ' got worse. '] : ' and none got worse. ');
     }
     if (quality.status !== 'nodata') {
-      const q = quality.status === 'worse' ? 'got worse' : quality.status === 'improved' ? 'improved' : 'held steady';
+      const q = quality.status === 'worse' ? (quality.slight ? 'got slightly worse' : 'got worse') : quality.status === 'improved' ? (quality.slight ? 'improved slightly' : 'improved')
+        : quality.likely === 'worse' ? 'likely got worse' : quality.likely === 'improved' ? 'likely improved' : 'held steady';
       parts.push('Quality (reopen rate) ', el('strong', { text: q }), ' (' + F.pct(quality.pct) + '). ');
     }
     const bugs = ctx.teamEffect('bugRate');
     if (bugs.pct != null && !bugs.wide) {
-      const q = bugs.status === 'worse' ? 'rose' : bugs.status === 'improved' ? 'fell' : 'did not clearly change';
+      const q = bugs.status === 'worse' ? 'rose' : bugs.status === 'improved' ? 'fell' : bugs.likely === 'worse' ? 'likely rose' : bugs.likely === 'improved' ? 'likely fell' : 'did not clearly change';
       parts.push('Bugs per 100 PRs ', el('strong', { text: q }), ' as teams adopted AI (' + F.pct(bugs.pct) + ' at full adoption). ');
     }
     // Dose: if AI drives the change, the effect grows with usage.

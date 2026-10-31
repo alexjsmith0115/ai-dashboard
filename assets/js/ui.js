@@ -82,9 +82,13 @@ window.AID = window.AID || {};
     const cls = big ? '.chip.big' : '.chip';
     if (!c || c.status === 'nodata') return el('span' + cls, icon('flat'), 'Not enough data');
     const dirIcon = c.diff > 0 ? 'up' : 'down';
-    if (c.status === 'improved') return el('span' + cls + '.good', icon(dirIcon), 'Improved');
-    if (c.status === 'worse') return el('span' + cls + '.bad', icon(dirIcon), 'Worse');
-    if (c.status === 'up' || c.status === 'down') return el('span' + cls, icon(dirIcon), c.status === 'up' ? 'Increased' : 'Decreased');
+    // Tiers: clear (95% CI excludes 0; "slight" under 5%), likely (only the 80% CI excludes 0), no clear change.
+    if (c.status === 'improved') return el('span' + cls + '.good', icon(dirIcon), c.slight ? 'Slight improvement' : 'Improved');
+    if (c.status === 'worse') return el('span' + cls + '.bad', icon(dirIcon), c.slight ? 'Slightly worse' : 'Worse');
+    if (c.status === 'up' || c.status === 'down') return el('span' + cls, icon(dirIcon), (c.slight ? 'Slightly ' : '') + (c.status === 'up' ? 'Increased' : 'Decreased').toLowerCase().replace(/^./, (ch) => (c.slight ? ch : ch.toUpperCase())));
+    if (c.likely === 'improved') return el('span' + cls + '.likely-good', icon(dirIcon), 'Likely improved');
+    if (c.likely === 'worse') return el('span' + cls + '.likely-bad', icon(dirIcon), 'Likely worse');
+    if (c.likely === 'up' || c.likely === 'down') return el('span' + cls + '.likely', icon(dirIcon), c.likely === 'up' ? 'Likely increased' : 'Likely decreased');
     return el('span' + cls, icon('flat'), 'No clear change');
   }
   function answerChip(kind, text) {

@@ -223,7 +223,9 @@ window.AID = window.AID || {};
       short: 'The 95% confidence interval (CI) is the range that very likely holds the true value. "Improved" and "Worse" show only when the CI does not include 0.',
       how: [
         'The CI comes from the spread of the per-developer results: average ± t × standard deviation ÷ √n, with n = number of developers.',
-        'Improved: the CI is fully on the better side of 0. Worse: fully on the worse side. No clear change: the CI includes 0.',
+        'Improved: the 95% CI is fully on the better side of 0. Worse: fully on the worse side. No clear change: the CI includes 0.',
+        'Slight improvement / Slightly worse: the 95% CI excludes 0, but the effect is under {slight}%. Clear, but small.',
+        'Likely improved / Likely worse: the 95% CI includes 0, but the 80% CI does not. The direction is probable, not established. The verdict does not count these.',
         'For cycle time, time to merge, reopen rate, and spend per merged PR, lower is better. A negative change there is "Improved".',
         'For metrics with no better direction (for example, lines added), the labels are "Increased" and "Decreased".',
       ],
@@ -605,7 +607,7 @@ window.AID = window.AID || {};
     return {
       tool: AID.tool.label, toolAny: AID.tool.any,
       thr, hi, thrMinus: thr - 1, hiMinus: hi - 1, onboard: s.onboard ?? 3, minGroup: s.minGroup || 5, ramp: s.ramp || 0,
-      minCtrl: AID.analysis.MIN_CONTROL_DEVS, minMonths: AID.analysis.MIN_MONTHS_PER_SIDE, minClusters: AID.analysis.MIN_CLUSTERS,
+      minCtrl: AID.analysis.MIN_CONTROL_DEVS, minMonths: AID.analysis.MIN_MONTHS_PER_SIDE, minClusters: AID.analysis.MIN_CLUSTERS, slight: AID.analysis.SLIGHT_PCT * 100,
       minTeams: AID.analysis.MIN_TEAMS, bugWindow: AID.analysis.BUG_WINDOW, bugSkip: AID.analysis.BUG_SKIP_LAST,
     };
   }

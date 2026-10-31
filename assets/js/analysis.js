@@ -34,11 +34,24 @@ window.AID = window.AID || {};
   }
   // Two-sided 95% t critical values.
   const T95 = [[1, 12.71], [2, 4.30], [3, 3.18], [4, 2.78], [5, 2.57], [6, 2.45], [7, 2.36], [8, 2.31], [9, 2.26], [10, 2.23], [12, 2.18], [15, 2.13], [20, 2.09], [25, 2.06], [30, 2.04], [40, 2.02], [60, 2.00], [120, 1.98]];
-  function tCrit(df) {
+  // Two-sided 80% t critical values, for the "likely" status tier.
+  const T80 = [[1, 3.08], [2, 1.89], [3, 1.64], [4, 1.53], [5, 1.48], [6, 1.44], [7, 1.41], [8, 1.40], [9, 1.38], [10, 1.37], [12, 1.36], [15, 1.34], [20, 1.33], [25, 1.32], [30, 1.31], [40, 1.30], [60, 1.30], [120, 1.29]];
+  const SLIGHT_PCT = 0.05;       // a clear effect under this size is "slight"
+  function tCrit(df, table) {
+    const T = table || T95, inf = table ? 1.28 : 1.96;
     if (df < 1) return Infinity;
-    let v = 1.96;
-    for (let i = T95.length - 1; i >= 0; i--) if (df >= T95[i][0]) { v = T95[i][1]; break; }
-    return df > 120 ? 1.96 : v;
+    let v = inf;
+    for (let i = T.length - 1; i >= 0; i--) if (df >= T[i][0]) { v = T[i][1]; break; }
+    return df > 120 ? inf : v;
+  }
+  const tCrit80 = (df) => tCrit(df, T80);
+  // Status tiers from the CI and the size: 'improved' / 'worse' (95% CI excludes 0), with size 'slight' under SLIGHT_PCT;
+  // 'flat' with likely 'improved' / 'worse' when only the 80% CI excludes 0; plain 'flat' otherwise.
+  function tiers(res, md, lo80, hi80, better) {
+    const good = better === 'down' ? md < 0 : md > 0;
+    res.slight = res.sig && Math.abs(res.pct) < SLIGHT_PCT;
+    res.likely = !res.sig && (lo80 > 0 || hi80 < 0) ? (better === 'neutral' ? (md > 0 ? 'up' : 'down') : good ? 'improved' : 'worse') : null;
+    return good;
   }
   // Weighted mean. All weights zero or missing = plain mean.
   function wmean(vals, w) {
@@ -257,7 +270,9 @@ window.AID = window.AID || {};
       res.fromZero = !res.log && !!meta.usage && res.base < 0.1 * Math.abs(res.after);
       const sig = res.lo > 0 || res.hi < 0;
       res.sig = sig;
-      const good = meta.better === 'down' ? md < 0 : md > 0;
+      const h80 = tCrit80(res.df) * res.se;
+      const lo80 = res.log ? Math.exp(md - h80) - 1 : (md - h80) / res.base, hi80 = res.log ? Math.exp(md + h80) - 1 : (md + h80) / res.base;
+      const good = tiers(res, md, lo80, hi80, meta.better);
       res.good = good;
       res.status = !sig ? 'flat' : meta.better === 'neutral' ? (md > 0 ? 'up' : 'down') : good ? 'improved' : 'worse';
       res.score = meta.better === 'down' ? -res.pct : res.pct;
@@ -783,13 +798,15 @@ window.AID = window.AID || {};
       for (const o of obs) { sw += o.w; sy += o.w * (o.y - b * o.s); }
       const base = sy / sw;
       if (!(Math.abs(base) > 0)) return res;
-      const h = tCrit(G - 1) * se;
+      const h = tCrit(G - 1) * se, h80 = tCrit80(G - 1) * se, ab = Math.abs(base);
       const sig = b - h > 0 || b + h < 0;
-      const good = meta.better === 'down' ? b < 0 : b > 0;
       Object.assign(res, {
-        before: base, after: base + b, diff: b, pct: b / Math.abs(base), lo: (b - h) / Math.abs(base), hi: (b + h) / Math.abs(base), sePct: se / Math.abs(base),
-        wide: (2 * h) / Math.abs(base) > WIDE_CI, sig, good, status: !sig ? 'flat' : good ? 'improved' : 'worse',
+        before: base, after: base + b, diff: b, pct: b / ab, lo: (b - h) / ab, hi: (b + h) / ab, sePct: se / ab, md: b, se, df: G - 1,
+        wide: (2 * h) / ab > WIDE_CI, sig,
       });
+      const good = tiers(res, b, (b - h80) / ab, (b + h80) / ab, meta.better);
+      res.good = good;
+      res.status = !sig ? 'flat' : good ? 'improved' : 'worse';
       res.score = meta.better === 'down' ? -res.pct : res.pct;
       return res;
     }
@@ -827,5 +844,5 @@ window.AID = window.AID || {};
 
   function range(a, b) { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; }
 
-  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, MIN_CONTROL_DEVS, MIN_CLUSTERS, NON_ADOPTER_DAYS, OTHER, WIDE_CI, MIN_TEAMS, BUG_WINDOW, BUG_SKIP_LAST };
+  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, MIN_CONTROL_DEVS, MIN_CLUSTERS, SLIGHT_PCT, NON_ADOPTER_DAYS, OTHER, WIDE_CI, MIN_TEAMS, BUG_WINDOW, BUG_SKIP_LAST };
 })(window.AID);

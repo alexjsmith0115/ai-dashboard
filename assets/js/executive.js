@@ -110,7 +110,7 @@ window.AID = window.AID || {};
     if (lt.pct != null && hv.pct != null && !lt.wide && !hv.wide) {
       const gap = hv.score - lt.score;
       parts.push('The effect is ', el('strong', { text: F.pct(hv.pct) }), ' for heavy AI users vs ', el('strong', { text: F.pct(lt.pct) }), ' for light users — ',
-        gap > 0.02 ? 'it grows with usage, which is a sign that AI causes it.' : gap < -0.02 ? 'it does not grow with usage, so AI is not the likely cause.' : 'too small a gap to link the effect to usage.');
+        gap > 0.02 ? 'it grows with usage, which supports AI as the cause. Developers who got value may also have used it more, so this is support, not proof.' : gap < -0.02 ? 'it does not grow with usage, so something other than AI use is the more likely cause.' : 'too small a gap to link the effect to usage.');
     }
     left.appendChild(el('p.verdict-text', parts));
 

@@ -36,7 +36,7 @@ window.AID = window.AID || {};
     { key: 'medianCycleDays', label: 'Median cycle time', short: 'Cycle time', source: 'Jira', unit: 'days', better: 'down', desc: 'Median days from In Progress to Done.' },
     { key: 'meanCycleDays', label: 'Mean cycle time', short: 'Mean cycle', source: 'Jira', unit: 'days', better: 'down' },
     { key: 'reopenedTickets', label: 'Reopened tickets', short: 'Reopened', source: 'Jira', unit: 'count', better: 'down' },
-    { key: 'reopenRatePct', label: 'Reopen rate', short: 'Reopen %', source: 'Jira', unit: 'pct', better: 'down', desc: 'Share of done tickets that were reopened. Used as the quality guardrail.' },
+    { key: 'reopenRatePct', label: 'Reopen rate', short: 'Reopen %', source: 'Jira', unit: 'pct', better: 'down', derived: true, desc: 'reopenedTickets ÷ throughput, capped at 100%. Used as the quality guardrail.' },
     // ---- GitHub ----
     { key: 'prsMerged', label: 'PRs merged', short: 'PRs merged', source: 'GitHub', unit: 'count', better: 'up' },
     { key: 'prsOpened', label: 'PRs opened', short: 'PRs opened', source: 'GitHub', unit: 'count', better: 'up' },

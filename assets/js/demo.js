@@ -214,7 +214,7 @@ window.AID = window.AID || {};
           totalTabsShown: tabsShown, totalTabsAccepted: tabsAcc, totalApplies: applies, totalAccepts: accepts, totalRejects: applies - accepts, primaryModel: model,
           storyPoints, throughput, thoughputWithSubtasks: throughput + subtasks, storiesdone: stories, bugsDone: bugs, tasksDone: Math.max(0, throughput - stories - bugs),
           subtasksDone: subtasks, medianCycleDays: cycle, meanCycleDays: cycle === '' ? '' : r1(cycle * (1.25 + 0.2 * rnd())),
-          reopenedTickets: reopenRate === '' ? 0 : Math.round((throughput * reopenRate) / 100), reopenRatePct: reopenRate,
+          reopenedTickets: reopenRate === '' ? '' : Math.round((throughput * reopenRate) / 100),
           prsOpened, prsMerged, additions, deletions: Math.round(additions * (0.3 + 0.2 * rnd())), changedFiles: Math.round(prsMerged * (4 + 4 * rnd())),
           medianTimeToMergeHours: ttm, jiraLinkedPrs: Math.round(prsMerged * (0.7 + 0.25 * rnd())),
           copilotSpendDollars: cpSpend.toFixed(2), copilotContractTotalSpend: '', copilotActiveDays: cpDays, copilotTotalRequests: cpReq,

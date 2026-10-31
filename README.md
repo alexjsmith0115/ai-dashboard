@@ -37,7 +37,7 @@ The demo has about 500 synthetic developers in 3 orgs. **Download demo CSVs** gi
 - A developer key: `devId` (preferred), `email`, `cursorUserId`, `jiraAccountId`, or `githubLogin`. The dashboard matches it to the same column in `developers.csv`. The match ignores case.
 - A month: `month`, `period`, `yearMonth`, `monthStart`, or `date`. All of these formats work: `2025-03`, `2025-03-01`, `3/1/2025`, `03/2025`, `Mar 2025`, `202503`.
 
-All other columns are the Cursor, Copilot, Jira, and GitHub metrics from the schema. The Copilot columns start with `copilot` (`copilotActiveDays`, `copilotTotalRequests`, …) and are optional. Without them, the **Copilot** and **Both** buttons are disabled. Column order does not matter. Spaces around headers are trimmed. The dashboard ignores extra columns, and a missing metric column shows as empty.
+All other columns are the Cursor, Copilot, Jira, and GitHub metrics from the schema. The dashboard derives every rate itself: tab acceptance, AI acceptance, AI line share, churn rate (`churnedLines` ÷ `additions`), reopen rate (`reopenedTickets` ÷ `throughput`), and spend per merged PR. Send counts, not rates. The Copilot columns start with `copilot` (`copilotActiveDays`, `copilotTotalRequests`, …) and are optional. Without them, the **Copilot** and **Both** buttons are disabled. Column order does not matter. Spaces around headers are trimmed. The dashboard ignores extra columns, and a missing metric column shows as empty.
 
 Optional GitHub columns. The Executive summary uses them to show whether extra output is real, and what it costs reviewers. Without them, their tiles say which column to add.
 

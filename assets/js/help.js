@@ -521,7 +521,7 @@ window.AID = window.AID || {};
     medianCycleDays: 'Lower is better. The median for each developer-month, then averaged across developers. Months with no completed issues are blank.',
     meanCycleDays: 'Lower is better. A few long tickets can move the mean a lot, so the median is usually more reliable.',
     reopenedTickets: 'Lower is better. A raw count, so it grows with throughput. Reopen rate is fairer.',
-    reopenRatePct: 'Lower is better. The quality guardrail: more output with a higher reopen rate means lower quality.',
+    reopenRatePct: 'Lower is better. reopenedTickets ÷ throughput. The quality guardrail: more output with a higher reopen rate means lower quality.',
     prsMerged: 'The main output measure. AI can lead to more, smaller PRs, so check lines added and files changed too.',
     prsOpened: 'PRs opened. A large gap to PRs merged can mean abandoned or blocked work.',
     additions: 'More lines is not better. AI can add verbose code. No better direction.',

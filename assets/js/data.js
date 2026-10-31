@@ -169,6 +169,7 @@ window.AID = window.AID || {};
     v.aiLineShare = v.additions > 0 && v.acceptedLinesAdded != null ? Math.min(100, (100 * v.acceptedLinesAdded) / v.additions) : null;
     v.costPerMergedPr = v.prsMerged > 0 && v.spendDollars != null ? v.spendDollars / v.prsMerged : null;
     v.churnRatePct = v.additions > 0 && v.churnedLines != null ? Math.min(100, (100 * v.churnedLines) / v.additions) : null;
+    v.reopenRatePct = v.throughput > 0 && v.reopenedTickets != null ? Math.min(100, (100 * v.reopenedTickets) / v.throughput) : null;
   }
 
   function buildDataset(devParsed, metParsed) {

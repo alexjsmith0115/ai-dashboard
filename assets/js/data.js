@@ -157,6 +157,40 @@ window.AID = window.AID || {};
     ds.hasModel = tool === 'copilot' ? ds.models.copilot : tool === 'both' ? ds.models.cursor || ds.models.copilot : ds.models.cursor;
   }
 
+  // Outlier handling for the skewed per-PR medians (metrics with trim: true): time to merge, PR size, time to first review.
+  // s.minPrs: a developer-month with fewer merged PRs than this has no value (its median is 1 or 2 PRs, not a typical PR).
+  // s.outlierCap: 'p99' | 'p95' | 'none'. A value above that percentile is set to the percentile. The cutoff comes from
+  // every developer-month in the data (before and after adoption together, all filters ignored), so it cannot make or hide
+  // an AI effect, and a filter does not move it. The row stays, so counts and volume weights do not change.
+  // Sets ds.caps = Map(key -> { cut, capped, dropped, n }).
+  const CAP_P = { p99: 0.99, p95: 0.95 };
+  function applyOutliers(ds, s) {
+    const p = CAP_P[s.outlierCap] || null, minPrs = Math.max(1, s.minPrs || 1);
+    const sig = p + '|' + minPrs;
+    if (ds.outlierSig === sig) return;
+    ds.outlierSig = sig;
+    ds.caps = new Map();
+    for (const m of AID.METRICS.filter((x) => x.trim)) {
+      const k = m.key;
+      let dropped = 0;
+      const vals = [];
+      for (const r of ds.rows) {
+        let y = r.raw[k];
+        if (isNum(y) && minPrs > 1 && !(r.raw[m.volume] >= minPrs)) { y = null; dropped++; }
+        r.v[k] = isNum(y) ? y : null;
+        if (isNum(y)) vals.push(y);
+      }
+      let cut = null, capped = 0;
+      if (p && vals.length >= 20) {
+        vals.sort((a, b) => a - b);
+        const x = (vals.length - 1) * p, lo = Math.floor(x);
+        cut = vals[lo] + (vals[Math.min(lo + 1, vals.length - 1)] - vals[lo]) * (x - lo);
+        for (const r of ds.rows) if (r.v[k] > cut) { r.v[k] = cut; capped++; }
+      }
+      ds.caps.set(k, { cut, capped, dropped, n: vals.length });
+    }
+  }
+
   function derive(v) {
     v.tabAcceptRate = v.totalTabsShown > 0 && v.totalTabsAccepted != null ? (100 * v.totalTabsAccepted) / v.totalTabsShown : null;
     const ar = (v.totalAccepts || 0) + (v.totalRejects || 0);
@@ -308,5 +342,5 @@ window.AID = window.AID || {};
     return Papa.unparse({ fields, data: rows.map((r) => fields.map((f) => r[f])) });
   }
 
-  AID.data = { parseCsv, classify, buildDataset, attachTeams, applyTool, readFile, normalizeMonth, monthIndex, monthKey, monthLabel, toCsv };
+  AID.data = { parseCsv, classify, buildDataset, attachTeams, applyTool, applyOutliers, readFile, normalizeMonth, monthIndex, monthKey, monthLabel, toCsv };
 })(window.AID);

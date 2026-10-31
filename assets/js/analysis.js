@@ -279,7 +279,7 @@ window.AID = window.AID || {};
       return res;
     }
 
-    // Log scale for the AI effect. Times (days, hours) are positive and skewed: one 40-day ticket moves a mean a lot,
+    // Log scale for the AI effect. Times (days, hours) and PR size (metric flag log) are positive and skewed: one 40-day ticket moves a mean a lot,
     // and on the log scale the effect is a ratio, which is what the % shows anyway. Counts can have zero months, so they
     // use log(y + 1), which depends a little on the +1; they are linear unless settings.logScale = 'all'. Rates stay linear.
     const LOG_FLOOR = { days: 1 / 24, hours: 0.1 }; // a 0 time is set to this before the log
@@ -288,6 +288,7 @@ window.AID = window.AID || {};
       const m = AID.M[key];
       if (!m || logScale === 'none') return null;
       if (m.unit === 'days' || m.unit === 'hours') return { c: 0, floor: LOG_FLOOR[m.unit] };
+      if (m.log) return { c: 0, floor: 1 }; // PR size: always 1+ lines, skewed like a time
       if (m.unit === 'count' && logScale === 'all') return { c: 1, floor: 0 };
       return null;
     }

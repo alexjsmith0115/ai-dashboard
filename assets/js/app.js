@@ -11,7 +11,7 @@ window.AID = window.AID || {};
     showSettings: false,
     tool: 'cursor',
     filters: { org: '', domain: '', team: '', level: '', icOnly: true, from: '', to: '' },
-    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12, tierBasis: 'days', logScale: 'times', shrink: true },
+    settings: { mode: 'rollout', rollout: '', ramp: 0, onboard: 3, minGroup: 5, control: 'all', activeDays: 5, highDays: 12, tierBasis: 'days', logScale: 'times', shrink: true, outlierCap: 'p99', minPrs: 1 },
     exec: { metric: 'prsMerged', groupBy: 'org', crossBy: 'level', crossMode: 'did' },
     explore: {
       trendMetric: 'prsMerged', trendGroup: 'tier', trendX: 'calendar', trendAgg: 'mean',
@@ -132,6 +132,7 @@ window.AID = window.AID || {};
     if (dataset && !hasTool(tool)) tool = hasTool('cursor') ? 'cursor' : hasTool('copilot') ? 'copilot' : 'cursor';
     AID.setTool(tool);
     if (dataset && dataset.tool !== tool) AID.data.applyTool(dataset, tool);
+    if (dataset) AID.data.applyOutliers(dataset, state.settings);
     // A saved metric choice can be a Cursor-only metric that the Copilot view does not have.
     for (const k of ['trendMetric', 'sx', 'sy']) if (!AID.available(state.explore[k])) state.explore[k] = DEFAULTS.explore[k];
   }
@@ -210,8 +211,11 @@ window.AID = window.AID || {};
       numField('Ramp-up months to skip', s.ramp, 0, 6, (n) => setS({ ramp: n }), 'Months right after the split that count as neither before nor after.'),
       numField('New-hire onboarding months to skip', s.onboard, 0, 12, (n) => setS({ onboard: n }), 'A new hire is a developer whose first month of work is after the first month in the data. Their first months are left out of all results.'),
       numField('Minimum developers per group', s.minGroup, 2, 30, (n) => setS({ minGroup: n }), 'Groups and job level × usage cells with fewer developers (with enough months before and after) are hidden from charts and flagged "Small sample". Small groups give wide, unreliable confidence intervals.'),
-      el('div', select('Log scale for the AI effect', [{ value: 'times', label: 'Times only (cycle time, hours)' }, { value: 'all', label: 'Times and counts' }, { value: 'none', label: 'None' }], s.logScale || 'times', (v) => setS({ logScale: v })),
-        el('p.help', { text: 'On the log scale the effect is a ratio for the typical developer, and one very long ticket or one huge month cannot dominate. Times are always positive, so log is their natural scale. Counts use log(value + 1) because of zero months, which adds a small dependence on the +1. Rates are never logged.' })),
+      el('div', select('Cap extreme PR values', [{ value: 'p99', label: '99th percentile' }, { value: 'p95', label: '95th percentile' }, { value: 'none', label: 'No cap' }], s.outlierCap || 'p99', (v) => setS({ outlierCap: v })),
+        el('p.help', { text: 'For ' + trimLabels() + '. A developer-month above the percentile is set to the percentile, so one huge or very slow PR cannot skew the results. The cutoff uses all months, before and after adoption together.' + capNote() })),
+      numField('Minimum merged PRs for a PR median', s.minPrs || 1, 1, 10, (n) => setS({ minPrs: n }), 'For ' + trimLabels() + '. A developer-month with fewer merged PRs has no value: its median is one or two PRs, not a typical PR. 1 = use every month.' + dropNote()),
+      el('div', select('Log scale for the AI effect', [{ value: 'times', label: 'Times and PR size' }, { value: 'all', label: 'Times, PR size, and counts' }, { value: 'none', label: 'None' }], s.logScale || 'times', (v) => setS({ logScale: v })),
+        el('p.help', { text: 'On the log scale the effect is a ratio for the typical developer, and one very long ticket or one huge month cannot dominate. Times and PR size are always positive, so log is their natural scale. Counts use log(value + 1) because of zero months, which adds a small dependence on the +1. Rates are never logged.' })),
       el('div', select('Group estimates', [{ value: 'shrink', label: 'Pulled toward the parent group (recommended)' }, { value: 'raw', label: 'Raw' }], s.shrink === false ? 'raw' : 'shrink', (v) => setS({ shrink: v !== 'raw' })),
         el('p.help', { text: 'For the "Which groups" section only. A noisy team\'s estimate moves toward its domain in proportion to its own noise; a precise one stays. The table shows the raw value next to it. The headline and tiles never move.' })),
       el('div', select('Usage tier based on', [{ value: 'days', label: 'Active days' }, { value: 'spend', label: 'Spend' }], s.tierBasis, (v) => setS({ tierBasis: v })),
@@ -220,6 +224,18 @@ window.AID = window.AID || {};
           : 'Low and High from average active days per month in the after period, split at the high-usage threshold below.' })),
       numField('Active threshold (days / month)', s.activeDays, 2, 20, (n) => setS({ activeDays: n, highDays: Math.max(n + 1, s.highDays) }), 'A developer counts as an active AI user in a month with this many ' + AID.M.activeDays.label + '. Their first such month is their adoption month.'),
       numField('High-usage threshold (days / month)', s.highDays, 2, 25, (n) => setS({ highDays: Math.max(n, s.activeDays + 1) }), s.tierBasis === 'spend' ? 'Not used: usage tiers are based on spend.' : 'Average active days per month for the "High" usage tier. Under ' + AID.analysis.NON_ADOPTER_DAYS + ' day = non-adopter.'));
+  }
+
+  // Labels and notes for the outlier settings, from the cutoffs in dataset.caps (AID.data.applyOutliers).
+  const trimMetrics = () => AID.METRICS.filter((m) => m.trim && dataset && dataset.caps && dataset.caps.get(m.key).n);
+  const trimLabels = () => (trimMetrics().map((m) => m.label.charAt(0).toLowerCase() + m.label.slice(1)).join(', ') || 'the per-PR medians');
+  function capNote() {
+    const parts = trimMetrics().map((m) => { const c = dataset.caps.get(m.key); return c.cut == null ? null : m.short + ' ' + AID.fmt.value(c.cut, m.unit) + (m.unit === 'count' ? ' lines' : '') + ' (' + c.capped + ' months)'; }).filter(Boolean);
+    return parts.length ? ' Current cutoffs: ' + parts.join(', ') + '.' : '';
+  }
+  function dropNote() {
+    const parts = trimMetrics().map((m) => { const c = dataset.caps.get(m.key); return c.dropped ? m.short + ' ' + c.dropped : null; }).filter(Boolean);
+    return parts.length ? ' Months left out: ' + parts.join(', ') + '.' : '';
   }
 
   function renderMessages(main) {

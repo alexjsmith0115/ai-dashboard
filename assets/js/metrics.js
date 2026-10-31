@@ -10,6 +10,8 @@ window.AID = window.AID || {};
   // cursorOnly: Cursor has the feature, Copilot does not.
   // volume: for a median or rate, the count it is measured over. The AI effect weights a developer's months by it,
   // so a median from 1 issue counts less than one from 30 in that developer's own average.
+  // trim: a skewed per-PR median. Settings can cap its extreme developer-months and drop months with few PRs (AID.data.applyOutliers).
+  // log: fitted on the log scale for the AI effect, like a time.
   const METRICS = [
     // ---- AI usage (Cursor, Copilot, or both) ----
     { key: 'activeDays', label: '{tool} active days', short: 'Active days', usage: true, unit: 'days', better: 'neutral', empty: 'zero', desc: 'Days in the month with any {tool} activity.',
@@ -45,15 +47,15 @@ window.AID = window.AID || {};
     { key: 'additions', label: 'Lines added (GitHub)', short: 'Additions', source: 'GitHub', unit: 'count', better: 'neutral' },
     { key: 'deletions', label: 'Lines deleted (GitHub)', short: 'Deletions', source: 'GitHub', unit: 'count', better: 'neutral' },
     { key: 'changedFiles', label: 'Files changed', short: 'Files', source: 'GitHub', unit: 'count', better: 'neutral' },
-    { key: 'medianTimeToMergeHours', label: 'Median time to merge', short: 'Time to merge', source: 'GitHub', unit: 'hours', better: 'down', volume: 'prsMerged', desc: 'Median hours from PR open to merge.' },
+    { key: 'medianTimeToMergeHours', label: 'Median time to merge', short: 'Time to merge', source: 'GitHub', unit: 'hours', better: 'down', volume: 'prsMerged', trim: true, desc: 'Median hours from PR open to merge.' },
     { key: 'jiraLinkedPrs', label: 'Jira-linked PRs', short: 'Linked PRs', source: 'GitHub', unit: 'count', better: 'neutral' },
     // optional: newer columns. A file without them gets one "optional columns" note, not a missing-column warning.
-    { key: 'medianPrSizeLines', label: 'Median PR size', short: 'PR size', source: 'GitHub', unit: 'count', better: 'down', optional: true, volume: 'prsMerged', desc: 'Median lines changed (additions + deletions) per merged PR.' },
+    { key: 'medianPrSizeLines', label: 'Median PR size', short: 'PR size', source: 'GitHub', unit: 'count', better: 'down', optional: true, volume: 'prsMerged', trim: true, log: true, desc: 'Median lines changed (additions + deletions) per merged PR.' },
     { key: 'churnedLines', label: 'Churned lines', short: 'Churn', source: 'GitHub', unit: 'count', better: 'down', optional: true, desc: 'Lines added in the month that were deleted or rewritten within 21 days.' },
     { key: 'churnRatePct', label: 'Churn rate', short: 'Churn %', source: 'GitHub', unit: 'pct', better: 'down', derived: true, volume: 'additions', desc: 'churnedLines ÷ GitHub additions, capped at 100%.' },
     { key: 'prsReviewed', label: 'PRs reviewed', short: 'Reviews', source: 'GitHub', unit: 'count', better: 'neutral', optional: true, desc: 'Other developers\' PRs that the developer reviewed (approved, requested changes, or commented on).' },
     { key: 'reviewCommentsGiven', label: 'Review comments given', short: 'Review comments', source: 'GitHub', unit: 'count', better: 'neutral', optional: true, desc: 'Review comments the developer wrote on other developers\' PRs.' },
-    { key: 'medianTimeToFirstReviewHours', label: 'Median time to first review', short: 'Time to review', source: 'GitHub', unit: 'hours', better: 'down', optional: true, volume: 'prsMerged', desc: 'Median hours from PR open to the first review, for the developer\'s own PRs.' },
+    { key: 'medianTimeToFirstReviewHours', label: 'Median time to first review', short: 'Time to review', source: 'GitHub', unit: 'hours', better: 'down', optional: true, volume: 'prsMerged', trim: true, desc: 'Median hours from PR open to the first review, for the developer\'s own PRs.' },
     { key: 'costPerMergedPr', label: '{tool} spend per merged PR', short: '$ / PR', usage: true, unit: 'usd', better: 'down', derived: true, volume: 'prsMerged', desc: '{tool} spend ÷ PRs merged, for months with at least one merged PR.' },
   ];
   for (const m of METRICS) if (m.usage) { m.labelT = m.label; m.descT = m.desc; }

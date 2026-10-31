@@ -5,7 +5,7 @@ window.AID = window.AID || {};
   const { el, select, seg, statusChip, answerChip, table, card, icon, titleRow } = AID.ui;
   const F = AID.fmt;
 
-  const HEADLINE_OPTIONS = ['prsMerged', 'throughput', 'medianCycleDays', 'medianTimeToMergeHours'];
+  const HEADLINE_OPTIONS = ['prsMerged', 'throughput', 'medianCycleDays'];
   const GROUP_LEVELS = [{ value: 'org', label: 'Org' }, { value: 'domain', label: 'Domain' }, { value: 'team', label: 'Team' }, { value: 'level', label: 'Job level' }];
   const BAR_LIMIT = 20;
   let stickyObs = null;
@@ -190,7 +190,7 @@ window.AID = window.AID || {};
   // Developer tiles show the DiD effect (actual vs expected without AI). Team tiles show the team-level effect (0% vs 100% adoption).
   // Ordered so that each row is full on wide screens: 4 (wider tiles, span = the full row) | 2 + 3 | 3 + 2.
   const KPI_GROUPS = [
-    { title: 'Output and speed', sub: 'AI effect: actual vs expected without AI. The developer tiles here and time to merge set the verdict.', span: 5, tiles: ['prsMerged', 'throughput', 'medianCycleDays', 'team:prsPerDev'] },
+    { title: 'Output and speed', sub: 'AI effect: actual vs expected without AI. The developer tiles here set the verdict.', span: 5, tiles: ['prsMerged', 'throughput', 'medianCycleDays', 'team:prsPerDev'] },
     { title: 'Is the extra output real?', sub: 'More PRs can come from larger PRs, or from code that is soon rewritten.', tiles: ['medianPrSizeLines', 'churnRatePct'] },
     { title: 'Review load', sub: 'More code needs more review. Slower first reviews or merges mean reviewers are the bottleneck.', tiles: ['prsReviewed', 'medianTimeToFirstReviewHours', 'medianTimeToMergeHours'] },
     { title: 'Quality', sub: 'More output with more bugs or reopened tickets is not a gain.', tiles: ['reopenRatePct', 'team:bugRate', 'team:escapedBugRate'] },

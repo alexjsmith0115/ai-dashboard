@@ -87,11 +87,12 @@ window.AID = window.AID || {};
 
   // The metrics that answer "are developers more productive?" on the executive page.
   // Story points are left out: each team sets its own point values, and teams can inflate them after AI arrives.
-  const KEY_PRODUCTIVITY = ['prsMerged', 'throughput', 'medianCycleDays', 'medianTimeToMergeHours'];
+  // Time to merge is not core: reviewers set it, not the author's AI use. It is a review-load metric.
+  const KEY_PRODUCTIVITY = ['prsMerged', 'throughput', 'medianCycleDays'];
   const QUALITY_GUARDRAIL = 'reopenRatePct';
   // Shown next to the core metrics on the executive page when the file has them, but not counted in the verdict.
   // AI can raise PR counts by making PRs larger, rework more, or review load heavier. These show whether it did.
-  const CONTEXT_METRICS = ['medianPrSizeLines', 'churnRatePct', 'prsReviewed', 'medianTimeToFirstReviewHours'];
+  const CONTEXT_METRICS = ['medianPrSizeLines', 'churnRatePct', 'prsReviewed', 'medianTimeToFirstReviewHours', 'medianTimeToMergeHours'];
   const OUTCOME_METRICS = METRICS.filter((m) => !m.usage).map((m) => m.key).concat(['costPerMergedPr']);
 
   // Team-level metrics (one value per team per month). Bugs are only counted per team, in team_monthly_metrics.csv.

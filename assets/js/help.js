@@ -278,7 +278,7 @@ window.AID = window.AID || {};
       id: 'c-verdict', title: 'Verdict', area: 'Executive summary',
       short: 'The answer to "Are we seeing improvements since the adoption of AI?", based on the AI effect for the headline metric and the 4 core productivity metrics.',
       how: [
-        'Core metrics: PRs merged, Jira issues done, median cycle time, and median time to merge. Quality guardrail: reopen rate.',
+        'Core metrics: PRs merged, Jira issues done, and median cycle time. Quality guardrail: reopen rate. Time to merge is a review-load metric: reviewers set it, not the author.',
         'Story points are not a core metric: each team sets its own point values, and teams can inflate them after AI arrives. Story points are still on the Explore tab.',
         'Yes: the headline metric improved, and at least half of the core metrics improved. No: more core metrics got worse than improved, or the headline got worse. Partly: some improved. Not yet: none clearly changed.',
         'The large number is the AI effect for the headline metric. You choose the headline metric at the top right.',

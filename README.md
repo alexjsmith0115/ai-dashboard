@@ -160,6 +160,6 @@ To add or change a metric, edit `assets/js/metrics.js`, and add its reading note
 
 ## Notes
 
-- `contractTotalSpend` is read but not charted. It is an account-level figure, not a per-developer figure.
+- Time to merge is not a core metric. Reviewers set it, not the author's AI use. It is in the *Review load* group.
 - `aiLineShare` (AI lines accepted ÷ GitHub additions) is a rough signal. Not every accepted line reaches a merged PR.
 - The AI effect removes seasonality and company-wide changes. It does not remove a change that hits only the adopters in the month they adopt (for example, a team re-org in that month). Developers chose how much to use AI. Thus the effect is strong evidence, not proof. Check that the event-study points before adoption are flat, and that the effect grows with usage tier.

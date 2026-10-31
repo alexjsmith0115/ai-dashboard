@@ -47,21 +47,29 @@ window.AID = window.AID || {};
     return sw > 0 ? s / sw : mean(vals);
   }
   // Standard error of a (weighted) mean, clustered by group (team). Developers on one team share re-orgs, incidents,
-  // and code, so their effects are not independent. With fewer than 2 groups, the values are the clusters.
+  // and code, so their effects are not independent. Clustering needs MIN_CLUSTERS+ teams: with fewer, the t critical
+  // value for G − 1 degrees of freedom (12.7 for 2 teams, 4.3 for 3) makes every CI unreadable. Below that, each
+  // developer is its own cluster.
+  const MIN_CLUSTERS = 10;
   function clusterSE(vals, groups, weights) {
     const n = vals.length;
     let w = weights || vals.map(() => 1);
     let sw = w.reduce((a, b) => a + (b > 0 ? b : 0), 0);
     if (!(sw > 0)) { w = vals.map(() => 1); sw = n; }
     const m = wmean(vals, w);
-    const byG = new Map();
-    vals.forEach((v, i) => { if (w[i] > 0) byG.set(groups[i], (byG.get(groups[i]) || 0) + (w[i] * (v - m)) / sw); });
-    let G = byG.size;
-    if (G < 2) { byG.clear(); vals.forEach((v, i) => { if (w[i] > 0) byG.set(i, (w[i] * (v - m)) / sw); }); G = byG.size; }
-    if (G < 2) return { se: Infinity, df: 1 };
+    const sums = (keyOf) => {
+      const byG = new Map();
+      vals.forEach((v, i) => { if (w[i] > 0) byG.set(keyOf(i), (byG.get(keyOf(i)) || 0) + (w[i] * (v - m)) / sw); });
+      return byG;
+    };
+    let byG = sums((i) => groups[i]);
+    let clustered = byG.size >= MIN_CLUSTERS;
+    if (!clustered) byG = sums((i) => i);
+    const G = byG.size;
+    if (G < 2) return { se: Infinity, df: 1, clustered: false };
     let s = 0;
     for (const x of byG.values()) s += x * x;
-    return { se: Math.sqrt(s * (G / (G - 1))), df: G - 1 };
+    return { se: Math.sqrt(s * (G / (G - 1))), df: G - 1, clustered };
   }
   function pearson(x, y) {
     const n = x.length;
@@ -379,7 +387,7 @@ window.AID = window.AID || {};
       const res = { key, n, method: 'did', control: fit.control, before: wmean(per.map((x) => x.yhat), w), after: wmean(per.map((x) => x.y), w), status: 'nodata' };
       if (n < 2 || !res.before) return res;
       const taus = per.map((x) => x.tau), c = clusterSE(taus, teams, w);
-      res.teams = new Set(teams).size;
+      res.teams = new Set(teams).size; res.clustered = c.clustered;
       return finish(res, wmean(taus, w), c.se, n, base || res.before, c.df);
     }
 
@@ -754,5 +762,5 @@ window.AID = window.AID || {};
 
   function range(a, b) { const out = []; for (let i = a; i <= b; i++) out.push(i); return out; }
 
-  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, MIN_CONTROL_DEVS, NON_ADOPTER_DAYS, OTHER, WIDE_CI, MIN_TEAMS, BUG_WINDOW, BUG_SKIP_LAST };
+  AID.analysis = { buildContext, mean, median, sd, correlate, linearFit, pearson, MIN_MONTHS_PER_SIDE, MIN_GROUP_DEVS, MIN_CONTROL_DEVS, MIN_CLUSTERS, NON_ADOPTER_DAYS, OTHER, WIDE_CI, MIN_TEAMS, BUG_WINDOW, BUG_SKIP_LAST };
 })(window.AID);

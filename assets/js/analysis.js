@@ -40,17 +40,28 @@ window.AID = window.AID || {};
     for (let i = T95.length - 1; i >= 0; i--) if (df >= T95[i][0]) { v = T95[i][1]; break; }
     return df > 120 ? 1.96 : v;
   }
-  // Standard error of a mean, clustered by group (team). Developers on one team share re-orgs, incidents, and code, so
-  // their effects are not independent. With fewer than 2 groups, the plain SE across values is used.
-  function clusterSE(vals, groups) {
-    const n = vals.length, m = mean(vals);
+  // Weighted mean. All weights zero or missing = plain mean.
+  function wmean(vals, w) {
+    let s = 0, sw = 0;
+    for (let i = 0; i < vals.length; i++) if (isNum(vals[i]) && w[i] > 0) { s += w[i] * vals[i]; sw += w[i]; }
+    return sw > 0 ? s / sw : mean(vals);
+  }
+  // Standard error of a (weighted) mean, clustered by group (team). Developers on one team share re-orgs, incidents,
+  // and code, so their effects are not independent. With fewer than 2 groups, the values are the clusters.
+  function clusterSE(vals, groups, weights) {
+    const n = vals.length;
+    let w = weights || vals.map(() => 1);
+    let sw = w.reduce((a, b) => a + (b > 0 ? b : 0), 0);
+    if (!(sw > 0)) { w = vals.map(() => 1); sw = n; }
+    const m = wmean(vals, w);
     const byG = new Map();
-    vals.forEach((v, i) => byG.set(groups[i], (byG.get(groups[i]) || 0) + (v - m)));
-    const G = byG.size;
-    if (G < 2) return { se: sd(vals) / Math.sqrt(n), df: n - 1 };
+    vals.forEach((v, i) => { if (w[i] > 0) byG.set(groups[i], (byG.get(groups[i]) || 0) + (w[i] * (v - m)) / sw); });
+    let G = byG.size;
+    if (G < 2) { byG.clear(); vals.forEach((v, i) => { if (w[i] > 0) byG.set(i, (w[i] * (v - m)) / sw); }); G = byG.size; }
+    if (G < 2) return { se: Infinity, df: 1 };
     let s = 0;
     for (const x of byG.values()) s += x * x;
-    return { se: Math.sqrt(s * (G / (G - 1))) / n, df: G - 1 };
+    return { se: Math.sqrt(s * (G / (G - 1))), df: G - 1 };
   }
   function pearson(x, y) {
     const n = x.length;
@@ -257,6 +268,7 @@ window.AID = window.AID || {};
     //    every month of non-adopters, and the months before adoption for adopters.
     // 2. For each adopter month after adoption, expected = developer effect + month effect. Effect = actual − expected.
     // 3. Average the effect per developer, then across developers. The CI comes from the spread across developers, clustered by team.
+    //    A median or rate (cycle time, reopen rate, PR size, ...) is weighted by its volume (issues, PRs), at both steps.
     // Developer effects remove fixed differences (skill, level, team). Month effects remove company-wide changes
     // (seasonality, re-orgs, process changes). Staggered adoption dates are handled because adopters are never
     // used as the comparison for each other after they adopt.
@@ -276,6 +288,8 @@ window.AID = window.AID || {};
       if (didCache.has(ck)) return didCache.get(ck);
       const devPos = new Map(), t0 = ds.months[0];
       const T = ds.months[ds.months.length - 1] - t0 + 1;
+      // Volume weight: for a median or rate, the count it was measured over (AID.M[key].volume). Counts weigh 1.
+      const vol = (AID.M[key] || {}).volume;
       const obs = [];
       for (const d of didPool) {
         const a = d.adoptIdx;
@@ -286,7 +300,8 @@ window.AID = window.AID || {};
           const treated = k != null && k >= 0;
           if (treated && k < ramp) continue; // ramp-up months count as neither side
           if (!devPos.has(d)) devPos.set(d, devPos.size);
-          obs.push({ d, i: devPos.get(d), t: r.mi - t0, y, k, treated, other: usesOther(r) });
+          const w = vol ? (r.v[vol] > 0 ? r.v[vol] : 0) : 1;
+          obs.push({ d, i: devPos.get(d), t: r.mi - t0, y, k, treated, other: usesOther(r), w });
         }
       }
       const D = devPos.size;
@@ -327,17 +342,18 @@ window.AID = window.AID || {};
         const yhat = alpha[o.i] + lambda[o.t], e = o.y - yhat;
         if (o.treated) {
           let rec = byDev.get(o.d);
-          if (!rec) { rec = { tau: [], yhat: [], y: [] }; byDev.set(o.d, rec); }
-          rec.tau.push(e); rec.yhat.push(yhat); rec.y.push(o.y);
+          if (!rec) { rec = { tau: [], yhat: [], y: [], w: [] }; byDev.set(o.d, rec); }
+          rec.tau.push(e); rec.yhat.push(yhat); rec.y.push(o.y); rec.w.push(o.w);
         }
         const bucket = o.treated ? post : pre;
         if (!bucket.has(o.k)) bucket.set(o.k, []);
-        bucket.get(o.k).push({ d: o.d, e, yhat, y: o.y });
+        bucket.get(o.k).push({ d: o.d, e, yhat, y: o.y, w: o.w });
       }
+      // Per developer: the volume-weighted average over their months after adoption. w = their total volume (1 for a count metric).
       const devEffects = new Map();
       for (const [d, rec] of byDev) {
         if (rec.tau.length < MIN_MONTHS_PER_SIDE) continue;
-        devEffects.set(d, { tau: mean(rec.tau), yhat: mean(rec.yhat), y: mean(rec.y), months: rec.tau.length });
+        devEffects.set(d, { tau: wmean(rec.tau, rec.w), yhat: wmean(rec.yhat, rec.w), y: wmean(rec.y, rec.w), months: rec.tau.length, w: vol ? rec.w.reduce((a, b) => a + b, 0) : 1 });
       }
       const minCtrl = Math.min(...[...nT].filter((n) => n > 0));
       // Developers with at least one month in the comparison group.
@@ -357,12 +373,12 @@ window.AID = window.AID || {};
       const fit = didFit(key, ctl);
       const per = [], teams = [];
       for (const d of devList || devs) { const x = fit.devEffects.get(d); if (x) { per.push(x); teams.push(d.team); } }
-      const n = per.length;
-      const res = { key, n, method: 'did', control: fit.control, before: mean(per.map((x) => x.yhat)), after: mean(per.map((x) => x.y)), status: 'nodata' };
+      const n = per.length, w = per.map((x) => x.w);
+      const res = { key, n, method: 'did', control: fit.control, before: wmean(per.map((x) => x.yhat), w), after: wmean(per.map((x) => x.y), w), status: 'nodata' };
       if (n < 2 || !res.before) return res;
-      const c = clusterSE(per.map((x) => x.tau), teams);
+      const taus = per.map((x) => x.tau), c = clusterSE(taus, teams, w);
       res.teams = new Set(teams).size;
-      return finish(res, mean(per.map((x) => x.tau)), c.se, n, base || res.before, c.df);
+      return finish(res, wmean(taus, w), c.se, n, base || res.before, c.df);
     }
 
     // Effect by month relative to adoption. Months before adoption show the leftover difference from the fitted
@@ -379,8 +395,8 @@ window.AID = window.AID || {};
         const n = b.length;
         const row = { k, n, post: k >= 0 };
         if (n >= MIN_CONTROL_DEVS && base) {
-          const es = b.map((x) => x.e), c = clusterSE(es, b.map((x) => x.d.team));
-          const m = mean(es), h = tCrit(c.df) * c.se;
+          const es = b.map((x) => x.e), w = b.map((x) => x.w), c = clusterSE(es, b.map((x) => x.d.team), w);
+          const m = wmean(es, w), h = tCrit(c.df) * c.se;
           Object.assign(row, { pct: m / base, lo: (m - h) / base, hi: (m + h) / base, wide: (2 * h) / base > WIDE_CI });
         }
         out.push(row);

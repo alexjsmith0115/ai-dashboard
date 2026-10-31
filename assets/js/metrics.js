@@ -8,6 +8,8 @@ window.AID = window.AID || {};
   // unit: drives formatting (count | days | hours | pct | usd).
   // usage: an AI tool metric. Its source, label, and desc follow the selected AI tool ({tool} = tool name; descBy = desc per tool).
   // cursorOnly: Cursor has the feature, Copilot does not.
+  // volume: for a median or rate, the count it is measured over. The AI effect weights each developer-month by it,
+  // so a median from 1 issue counts less than one from 30.
   const METRICS = [
     // ---- AI usage (Cursor, Copilot, or both) ----
     { key: 'activeDays', label: '{tool} active days', short: 'Active days', usage: true, unit: 'days', better: 'neutral', empty: 'zero', desc: 'Days in the month with any {tool} activity.',
@@ -33,26 +35,26 @@ window.AID = window.AID || {};
     { key: 'bugsDone', label: 'Bugs done', short: 'Bugs', source: 'Jira', unit: 'count', better: 'up' },
     { key: 'tasksDone', label: 'Tasks done', short: 'Tasks', source: 'Jira', unit: 'count', better: 'up' },
     { key: 'subtasksDone', label: 'Subtasks done', short: 'Subtasks', source: 'Jira', unit: 'count', better: 'up' },
-    { key: 'medianCycleDays', label: 'Median cycle time', short: 'Cycle time', source: 'Jira', unit: 'days', better: 'down', desc: 'Median days from In Progress to Done.' },
+    { key: 'medianCycleDays', label: 'Median cycle time', short: 'Cycle time', source: 'Jira', unit: 'days', better: 'down', volume: 'throughput', desc: 'Median days from In Progress to Done.' },
     { key: 'meanCycleDays', label: 'Mean cycle time', short: 'Mean cycle', source: 'Jira', unit: 'days', better: 'down' },
     { key: 'reopenedTickets', label: 'Reopened tickets', short: 'Reopened', source: 'Jira', unit: 'count', better: 'down' },
-    { key: 'reopenRatePct', label: 'Reopen rate', short: 'Reopen %', source: 'Jira', unit: 'pct', better: 'down', derived: true, desc: 'reopenedTickets ÷ throughput, capped at 100%. Used as the quality guardrail.' },
+    { key: 'reopenRatePct', label: 'Reopen rate', short: 'Reopen %', source: 'Jira', unit: 'pct', better: 'down', derived: true, volume: 'throughput', desc: 'reopenedTickets ÷ throughput, capped at 100%. Used as the quality guardrail.' },
     // ---- GitHub ----
     { key: 'prsMerged', label: 'PRs merged', short: 'PRs merged', source: 'GitHub', unit: 'count', better: 'up' },
     { key: 'prsOpened', label: 'PRs opened', short: 'PRs opened', source: 'GitHub', unit: 'count', better: 'up' },
     { key: 'additions', label: 'Lines added (GitHub)', short: 'Additions', source: 'GitHub', unit: 'count', better: 'neutral' },
     { key: 'deletions', label: 'Lines deleted (GitHub)', short: 'Deletions', source: 'GitHub', unit: 'count', better: 'neutral' },
     { key: 'changedFiles', label: 'Files changed', short: 'Files', source: 'GitHub', unit: 'count', better: 'neutral' },
-    { key: 'medianTimeToMergeHours', label: 'Median time to merge', short: 'Time to merge', source: 'GitHub', unit: 'hours', better: 'down', desc: 'Median hours from PR open to merge.' },
+    { key: 'medianTimeToMergeHours', label: 'Median time to merge', short: 'Time to merge', source: 'GitHub', unit: 'hours', better: 'down', volume: 'prsMerged', desc: 'Median hours from PR open to merge.' },
     { key: 'jiraLinkedPrs', label: 'Jira-linked PRs', short: 'Linked PRs', source: 'GitHub', unit: 'count', better: 'neutral' },
     // optional: newer columns. A file without them gets one "optional columns" note, not a missing-column warning.
-    { key: 'medianPrSizeLines', label: 'Median PR size', short: 'PR size', source: 'GitHub', unit: 'count', better: 'down', optional: true, desc: 'Median lines changed (additions + deletions) per merged PR.' },
+    { key: 'medianPrSizeLines', label: 'Median PR size', short: 'PR size', source: 'GitHub', unit: 'count', better: 'down', optional: true, volume: 'prsMerged', desc: 'Median lines changed (additions + deletions) per merged PR.' },
     { key: 'churnedLines', label: 'Churned lines', short: 'Churn', source: 'GitHub', unit: 'count', better: 'down', optional: true, desc: 'Lines added in the month that were deleted or rewritten within 21 days.' },
-    { key: 'churnRatePct', label: 'Churn rate', short: 'Churn %', source: 'GitHub', unit: 'pct', better: 'down', derived: true, desc: 'churnedLines ÷ GitHub additions, capped at 100%.' },
+    { key: 'churnRatePct', label: 'Churn rate', short: 'Churn %', source: 'GitHub', unit: 'pct', better: 'down', derived: true, volume: 'additions', desc: 'churnedLines ÷ GitHub additions, capped at 100%.' },
     { key: 'prsReviewed', label: 'PRs reviewed', short: 'Reviews', source: 'GitHub', unit: 'count', better: 'neutral', optional: true, desc: 'Other developers\' PRs that the developer reviewed (approved, requested changes, or commented on).' },
     { key: 'reviewCommentsGiven', label: 'Review comments given', short: 'Review comments', source: 'GitHub', unit: 'count', better: 'neutral', optional: true, desc: 'Review comments the developer wrote on other developers\' PRs.' },
-    { key: 'medianTimeToFirstReviewHours', label: 'Median time to first review', short: 'Time to review', source: 'GitHub', unit: 'hours', better: 'down', optional: true, desc: 'Median hours from PR open to the first review, for the developer\'s own PRs.' },
-    { key: 'costPerMergedPr', label: '{tool} spend per merged PR', short: '$ / PR', usage: true, unit: 'usd', better: 'down', derived: true, desc: '{tool} spend ÷ PRs merged, for months with at least one merged PR.' },
+    { key: 'medianTimeToFirstReviewHours', label: 'Median time to first review', short: 'Time to review', source: 'GitHub', unit: 'hours', better: 'down', optional: true, volume: 'prsMerged', desc: 'Median hours from PR open to the first review, for the developer\'s own PRs.' },
+    { key: 'costPerMergedPr', label: '{tool} spend per merged PR', short: '$ / PR', usage: true, unit: 'usd', better: 'down', derived: true, volume: 'prsMerged', desc: '{tool} spend ÷ PRs merged, for months with at least one merged PR.' },
   ];
   for (const m of METRICS) if (m.usage) { m.labelT = m.label; m.descT = m.desc; }
 

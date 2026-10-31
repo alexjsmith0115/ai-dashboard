@@ -78,6 +78,7 @@ A blank cell or a missing team-month counts as missing, not as 0. Write 0 for a 
 1. The dashboard fits a model with a *developer effect* (each developer's own level) and a *month effect* (company-wide change in that calendar month). It fits the model only on months without AI: all months of non-adopters, and the months before adoption for adopters.
 2. For each adopter month after adoption, *expected* = developer effect + month effect. *AI effect* = actual − expected.
 3. The dashboard averages the effect for each developer, then across developers. The 95% CI comes from the spread across developers, clustered by team: developers on one team share re-orgs and incidents, so one team counts as one unit.
+4. A median or a rate (cycle time, time to merge, PR size, reopen rate, churn rate) is weighted by its volume: issues done or PRs merged in that month. A median from 1 issue counts less than one from 30. Counts (PRs merged, issues done) are not weighted.
 
 Adoption month = the developer's first month with the active-days threshold. Each adopter has their own adoption month, so the model handles a staggered rollout. The month effects remove seasonality and company-wide changes. Developer effects remove fixed differences in skill, level, and team. The model uses every developer in the date range, and the org, domain, team, and level filters only select which adopters to average. A month needs 10+ developers who have not adopted yet. If a month has fewer, its adopter months are left out.
 

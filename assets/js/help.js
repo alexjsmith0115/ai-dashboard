@@ -102,7 +102,7 @@ window.AID = window.AID || {};
         'Step 2. For each adopter month after adoption: expected = developer effect + month effect. This is the value without AI.',
         'Step 3. AI effect for that month = actual − expected.',
         'Step 4. The dashboard averages the effect for each adopter, then across adopters. The % is the average effect divided by the average expected value.',
-        'A median or a rate (cycle time, time to merge, PR size, reopen rate, churn rate) is weighted by its volume: issues done or PRs merged in that month. A median from 1 issue counts less than one from 30. Counts are not weighted.',
+        'A median or a rate (cycle time, time to merge, PR size, reopen rate, churn rate) is weighted by its volume within a developer: a month with 30 issues counts more than a month with 1 in that developer\'s own average. Across developers each developer counts once. Counts are not weighted.',
         'When the selection has {minClusters}+ teams, the 95% CI treats each team as one unit: developers on one team share re-orgs, incidents, and code, so their effects are not independent. With fewer teams, each developer is one unit. Team clustering with few teams makes every CI unreadable.',
         'For a group, a usage tier, or a month since adoption, the % divides by the average expected value for all adopters in the selection. A group with a small expected value then does not get a very large % and CI, and all groups compare on one scale.',
         'Each adopter has their own adoption month. Adopters are never used as the comparison for each other after they adopt, so a staggered rollout gives correct results.',

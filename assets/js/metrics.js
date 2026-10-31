@@ -8,8 +8,8 @@ window.AID = window.AID || {};
   // unit: drives formatting (count | days | hours | pct | usd).
   // usage: an AI tool metric. Its source, label, and desc follow the selected AI tool ({tool} = tool name; descBy = desc per tool).
   // cursorOnly: Cursor has the feature, Copilot does not.
-  // volume: for a median or rate, the count it is measured over. The AI effect weights each developer-month by it,
-  // so a median from 1 issue counts less than one from 30.
+  // volume: for a median or rate, the count it is measured over. The AI effect weights a developer's months by it,
+  // so a median from 1 issue counts less than one from 30 in that developer's own average.
   const METRICS = [
     // ---- AI usage (Cursor, Copilot, or both) ----
     { key: 'activeDays', label: '{tool} active days', short: 'Active days', usage: true, unit: 'days', better: 'neutral', empty: 'zero', desc: 'Days in the month with any {tool} activity.',

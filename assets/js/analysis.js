@@ -278,7 +278,8 @@ window.AID = window.AID || {};
     //    every month of non-adopters, and the months before adoption for adopters.
     // 2. For each adopter month after adoption, expected = developer effect + month effect. Effect = actual − expected.
     // 3. Average the effect per developer, then across developers. The CI comes from the spread across developers, clustered by team.
-    //    A median or rate (cycle time, reopen rate, PR size, ...) is weighted by its volume (issues, PRs), at both steps.
+    //    A median or rate (cycle time, reopen rate, PR size, ...) is weighted by its volume (issues, PRs) within a developer.
+    //    Across developers each counts once.
     // Developer effects remove fixed differences (skill, level, team). Month effects remove company-wide changes
     // (seasonality, re-orgs, process changes). Staggered adoption dates are handled because adopters are never
     // used as the comparison for each other after they adopt.
@@ -359,11 +360,12 @@ window.AID = window.AID || {};
         if (!bucket.has(o.k)) bucket.set(o.k, []);
         bucket.get(o.k).push({ d: o.d, e, yhat, y: o.y, w: o.w });
       }
-      // Per developer: the volume-weighted average over their months after adoption. w = their total volume (1 for a count metric).
+      // Per developer: the volume-weighted average over their months after adoption. Across developers each counts once:
+      // weighting developers by volume lets one busy developer stand for a whole group, and the CI explodes.
       const devEffects = new Map();
       for (const [d, rec] of byDev) {
         if (rec.tau.length < MIN_MONTHS_PER_SIDE) continue;
-        devEffects.set(d, { tau: wmean(rec.tau, rec.w), yhat: wmean(rec.yhat, rec.w), y: wmean(rec.y, rec.w), months: rec.tau.length, w: vol ? rec.w.reduce((a, b) => a + b, 0) : 1 });
+        devEffects.set(d, { tau: wmean(rec.tau, rec.w), yhat: wmean(rec.yhat, rec.w), y: wmean(rec.y, rec.w), months: rec.tau.length, volume: vol ? rec.w.reduce((a, b) => a + b, 0) : null });
       }
       const minCtrl = Math.min(...[...nT].filter((n) => n > 0));
       // Developers with at least one month in the comparison group.
@@ -383,12 +385,12 @@ window.AID = window.AID || {};
       const fit = didFit(key, ctl);
       const per = [], teams = [];
       for (const d of devList || devs) { const x = fit.devEffects.get(d); if (x) { per.push(x); teams.push(d.team); } }
-      const n = per.length, w = per.map((x) => x.w);
-      const res = { key, n, method: 'did', control: fit.control, before: wmean(per.map((x) => x.yhat), w), after: wmean(per.map((x) => x.y), w), status: 'nodata' };
+      const n = per.length;
+      const res = { key, n, method: 'did', control: fit.control, before: mean(per.map((x) => x.yhat)), after: mean(per.map((x) => x.y)), status: 'nodata' };
       if (n < 2 || !res.before) return res;
-      const taus = per.map((x) => x.tau), c = clusterSE(taus, teams, w);
+      const taus = per.map((x) => x.tau), c = clusterSE(taus, teams);
       res.teams = new Set(teams).size; res.clustered = c.clustered;
-      return finish(res, wmean(taus, w), c.se, n, base || res.before, c.df);
+      return finish(res, mean(taus), c.se, n, base || res.before, c.df);
     }
 
     // Effect by month relative to adoption. Months before adoption show the leftover difference from the fitted
@@ -405,8 +407,8 @@ window.AID = window.AID || {};
         const n = b.length;
         const row = { k, n, post: k >= 0 };
         if (n >= MIN_CONTROL_DEVS && base) {
-          const es = b.map((x) => x.e), w = b.map((x) => x.w), c = clusterSE(es, b.map((x) => x.d.team), w);
-          const m = wmean(es, w), h = tCrit(c.df) * c.se;
+          const es = b.map((x) => x.e), c = clusterSE(es, b.map((x) => x.d.team));
+          const m = mean(es), h = tCrit(c.df) * c.se;
           Object.assign(row, { pct: m / base, lo: (m - h) / base, hi: (m + h) / base, wide: (2 * h) / base > WIDE_CI });
         }
         out.push(row);

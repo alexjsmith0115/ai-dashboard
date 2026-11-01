@@ -152,8 +152,10 @@ window.AID = window.AID || {};
     const right = el('div.verdict-side',
       el('div.card-title', el('p.verdict-q', { text: 'AI effect on ' + meta.short + ' by AI usage level' }), AID.help.button('m-tiers')),
       el('div.scorecard', rows),
-      el('p.method-note', { text: (ctx.tierBasis === 'spend'
-        ? 'Usage level = the adopters split at the median of average ' + AID.M.spendDollars.label + ' per month in the after period. Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.'
+      el('p.method-note', { text: (ctx.tierBasis === 'combined'
+        ? 'Usage level: High = ' + ctx.hi + '+ ' + AID.M.activeDays.label + ' and at least the median ' + AID.M.totalRequests.label + ' per month in the after period. Low = the other adopters. Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.'
+        : ctx.tierKey
+        ? 'Usage level = the adopters split at the median of average ' + AID.M[ctx.tierKey].label + ' per month in the after period. Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.'
         : 'Usage level = average ' + AID.M.activeDays.label + ' per month in the after period.') + ' Each effect is a % of the expected value for all adopters. Blue = better, red = worse' + (meta.better === 'down' ? ' (lower is better for this metric)' : '') + '. Pale = not statistically clear.' }),
       robustness(ctx, metric));
 

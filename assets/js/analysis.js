@@ -200,7 +200,9 @@ window.AID = window.AID || {};
     const tierCache = new Map();
     // Usage tiers. Non-adopter = under NON_ADOPTER_DAYS average active days per month in the after period, for both bases.
     // Basis 'days': Low / High from average active days (of the selected AI tool), split at the high-usage threshold.
-    // Basis 'spend': Low / High = the other developers split at the median of average monthly spend in the after period.
+    // Basis 'spend' / 'requests': Low / High = the other developers split at the median of average monthly spend
+    // (or AI requests) in the after period.
+    // Basis 'combined': High = at least the high-usage threshold of active days and at least the median requests. Low = the other adopters.
     // The median comes from every developer in the date range (ignoring org/domain/team/level filters), so a filter does not move a tier.
     const afterMean = (d, key) => {
       const after = rowsOf(d).filter((r) => phaseOf(r) === 'after');
@@ -208,22 +210,27 @@ window.AID = window.AID || {};
     };
     const usageAfter = (d) => afterMean(d, 'activeDays');
     const spendAfter = (d) => afterMean(d, 'spendDollars');
-    let tierBasis = s.tierBasis === 'spend' ? 'spend' : 'days';
-    let spendCuts = null;
-    if (tierBasis === 'spend') {
+    const requestsAfter = (d) => afterMean(d, 'totalRequests');
+    let tierBasis = ['spend', 'requests', 'combined'].includes(s.tierBasis) ? s.tierBasis : 'days';
+    const tierKey = tierBasis === 'spend' ? 'spendDollars' : tierBasis === 'days' ? null : 'totalRequests';
+    const tierAfter = tierKey === 'spendDollars' ? spendAfter : requestsAfter;
+    let tierCut = null;
+    if (tierKey) {
       const vals = ds.devs.filter((d) => rowsOf(d).length && (!f.icOnly || d.isIC) && usageAfter(d) >= NON_ADOPTER_DAYS)
-        .map(spendAfter).filter(isNum).sort((a, b) => a - b);
-      if (vals.length >= 2) spendCuts = [quantile(vals, 0.5)];
-      else tierBasis = 'days'; // no spend data: fall back to active days
+        .map(tierAfter).filter(isNum).sort((a, b) => a - b);
+      if (vals.length >= 2 && vals[vals.length - 1] > 0) tierCut = quantile(vals, 0.5);
+      else tierBasis = 'days'; // no spend or request data: fall back to active days
     }
     // Two usage tiers above non-adopter. A third (light) tier held only developers who reached the active threshold once and
     // then stopped: too few to read. The fine-grained dose curve is on the Explore tab (doseResponse, per developer-month).
     const TIER_SHORT = ['Non-adopter', 'Low', 'High'];
     const usd = (v) => '$' + Math.round(v);
+    const req = (v) => Math.round(v) + '+ req';
     const TIERS = [
       'Non-adopter (<' + NON_ADOPTER_DAYS + ' d/mo)',
-      ...(tierBasis === 'spend'
-        ? ['Low (under ' + usd(spendCuts[0]) + '/mo)', 'High (' + usd(spendCuts[0]) + '+/mo)']
+      ...(tierBasis === 'spend' ? ['Low (under ' + usd(tierCut) + '/mo)', 'High (' + usd(tierCut) + '+/mo)']
+        : tierBasis === 'requests' ? ['Low (under ' + Math.round(tierCut) + ' req/mo)', 'High (' + req(tierCut) + '/mo)']
+        : tierBasis === 'combined' ? ['Low (other adopters)', 'High (' + hi + '+ d, ' + req(tierCut) + '/mo)']
         : ['Low (' + NON_ADOPTER_DAYS + '–' + (hi - 1) + ' d/mo)', 'High (' + hi + '+ d/mo)']),
     ];
     const tierIndex = (d) => {
@@ -232,8 +239,11 @@ window.AID = window.AID || {};
       let i;
       if (u == null) i = -1;
       else if (u < NON_ADOPTER_DAYS) i = 0;
-      else if (tierBasis === 'spend') { const sp = spendAfter(d); i = sp == null ? -1 : sp >= spendCuts[0] ? 2 : 1; }
-      else i = u >= hi ? 2 : 1;
+      else if (tierBasis === 'days') i = u >= hi ? 2 : 1;
+      else {
+        const v = tierAfter(d);
+        i = v == null ? -1 : v >= tierCut && (tierBasis !== 'combined' || u >= hi) ? 2 : 1;
+      }
       tierCache.set(d, i);
       return i;
     };
@@ -838,7 +848,7 @@ window.AID = window.AID || {};
     const windowOf = (p) => { const m = allRowsInRange.filter((r) => phaseOf(r) === p).map((r) => r.mi); return m.length ? [Math.min(...m), Math.max(...m)] : null; };
 
     return {
-      ds, state, devs, months, onboarding, minGroup, control, CONTROLS, otherTool, tierBasis, spendCuts, logScale, logOf, shrink, spendAfter, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
+      ds, state, devs, months, onboarding, minGroup, control, CONTROLS, otherTool, tierBasis, tierKey, tierCut, logScale, logOf, shrink, spendAfter, requestsAfter, tierAfter, fromIdx, toIdx, rolloutIdx, autoRollout, medianAdopt, perDev, ramp, thr, hi, TIERS, TIER_SHORT,
       splitOf, phaseOf, rowsOf, tierOf, tierIndex, groupOf, usageAfter, phaseMeans, compare, compareByGroup, did, didFit, didByGroup, eventStudy, compareCross, groupValues,
       teamEffect, teamSeries, hasTeams: !!ds.teams,
       adoptionRate, series, adoptionSeries, devValues, pointsFor, corrMatrix, doseResponse, devSummary,

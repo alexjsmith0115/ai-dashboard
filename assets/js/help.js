@@ -76,12 +76,14 @@ window.AID = window.AID || {};
     },
     {
       id: 'm-tiers', title: 'AI usage tiers',
-      short: 'Each developer gets one usage tier from their use of {tool} after adoption (or after the rollout month): by active days (default) or by spend.',
+      short: 'Each developer gets one usage tier from their use of {tool} after adoption (or after the rollout month): by active days (default), AI requests, active days and AI requests, or spend.',
       how: [
-        'Settings (Usage tier based on) sets the basis: Active days or Spend.',
+        'Settings (Usage tier based on) sets the basis: Active days, AI requests, Active days and AI requests, or Spend.',
         'Active days: usage = the average {tool} active days per month in the developer\'s after period. Non-adopter: under 1 day per month. Low: 1 to {hiMinus}. High: {hi}+. The threshold is in Settings.',
-        'Spend: non-adopter is still under 1 active day per month. The other developers are split at the median of their average {tool} spend per month in the after period: Low = below the median, High = at or above it. The tier labels show the dollar cut point.',
-        'The spend median comes from every developer in the date range, not only the filtered group. Thus a filter does not change the tier of a developer.',
+        'AI requests: non-adopter is still under 1 active day per month. The other developers are split at the median of their average {tool} AI requests per month in the after period: Low = below the median, High = at or above it. The model price does not change it, but one agent request can do much more work than one chat request.',
+        'Active days and AI requests: High = {hi}+ active days and at least the median AI requests per month. Low = the other adopters. Thus light use every day and heavy use on a few days both count as Low.',
+        'Spend: as AI requests, but split at the median of average {tool} spend per month. Spend also depends on the model price, so a developer who uses expensive models ranks higher.',
+        'The tier labels show the cut point. The median comes from every developer in the date range, not only the filtered group. Thus a filter does not change the tier of a developer.',
         'Two tiers, not three: a light tier (1 to {thrMinus} days) held only developers who reached the active threshold once and then stopped. Too few to read. The five-bucket curve per developer-month is on the Explore tab (Productivity by monthly AI usage).',
       ],
       read: [
@@ -483,8 +485,8 @@ window.AID = window.AID || {};
     },
     {
       id: 'c-usagedist', title: 'How much each developer uses AI', area: 'Explore',
-      short: 'The number of developers at each level of average {tool} active days per month, or of average spend per month when usage tiers are based on spend.',
-      how: ['Each developer is counted once, by their average active days per month in the after period. Color = usage tier.'],
+      short: 'The number of developers at each level of average {tool} active days per month. When usage tiers are based on AI requests (alone or with active days) or on spend, the chart uses that value instead.',
+      how: ['Each developer is counted once, by their average value per month in the after period. Color = the usage tier of most developers in the bar.'],
       read: ['A tall bar at <1 means many non-adopters. A spread to the right means many high-usage developers.'],
       see: ['m-tiers'],
     },

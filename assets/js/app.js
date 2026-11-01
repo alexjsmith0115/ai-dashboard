@@ -34,7 +34,7 @@ window.AID = window.AID || {};
     minPrs: ['Minimum merged PRs for a PR median'],
     logScale: ['Log scale for the AI effect', { times: 'Times and PR size', all: 'Times, PR size, and counts', none: 'None' }],
     shrink: ['Group estimates', { true: 'Pulled toward the parent group', false: 'Raw' }],
-    tierBasis: ['Usage tier based on', { days: 'Active days', spend: 'Spend' }],
+    tierBasis: ['Usage tier based on', { days: 'Active days', requests: 'AI requests', combined: 'Active days and AI requests', spend: 'Spend' }],
     activeDays: ['Active threshold (days / month)'],
     highDays: ['High-usage threshold (days / month)'],
   };
@@ -255,12 +255,21 @@ window.AID = window.AID || {};
         el('p.help', { text: 'On the log scale the effect is a ratio for the typical developer, and one very long ticket or one huge month cannot dominate. Times and PR size are always positive, so log is their natural scale. Counts use log(value + 1) because of zero months, which adds a small dependence on the +1. Rates are never logged.' })),
       el('div', select('Group estimates', [{ value: 'shrink', label: 'Pulled toward the parent group (recommended)' }, { value: 'raw', label: 'Raw' }], s.shrink === false ? 'raw' : 'shrink', (v) => setS({ shrink: v !== 'raw' })),
         el('p.help', { text: 'For the "Which groups" section only. A noisy team\'s estimate moves toward its domain in proportion to its own noise; a precise one stays. The table shows the raw value next to it. The headline and tiles never move.' })),
-      el('div', select('Usage tier based on', [{ value: 'days', label: 'Active days' }, { value: 'spend', label: 'Spend' }], s.tierBasis, (v) => setS({ tierBasis: v })),
-        el('p.help', { text: s.tierBasis === 'spend'
-          ? 'Low and High = the developers split at the median of average ' + AID.M.spendDollars.label + ' per month in the after period' + (ctx && ctx.spendCuts ? ' (' + AID.fmt.value(ctx.spendCuts[0], 'usd') + ')' : '') + '. Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.' + (ctx && ctx.tierBasis !== 'spend' ? ' The data has no spend values, so active days are used.' : '')
-          : 'Low and High from average active days per month in the after period, split at the high-usage threshold below.' })),
+      el('div', select('Usage tier based on', [{ value: 'days', label: 'Active days' }, { value: 'requests', label: 'AI requests' }, { value: 'combined', label: 'Active days and AI requests' }, { value: 'spend', label: 'Spend' }], s.tierBasis, (v) => setS({ tierBasis: v })),
+        el('p.help', { text: tierHelp(s.tierBasis, ctx) })),
       numField('Active threshold (days / month)', s.activeDays, 2, 20, (n) => setS({ activeDays: n, highDays: Math.max(n + 1, s.highDays) }), 'A developer counts as an active AI user in a month with this many ' + AID.M.activeDays.label + '. Their first such month is their adoption month.'),
-      numField('High-usage threshold (days / month)', s.highDays, 2, 25, (n) => setS({ highDays: Math.max(n, s.activeDays + 1) }), s.tierBasis === 'spend' ? 'Not used: usage tiers are based on spend.' : 'Average active days per month for the "High" usage tier. Under ' + AID.analysis.NON_ADOPTER_DAYS + ' day = non-adopter.'));
+      numField('High-usage threshold (days / month)', s.highDays, 2, 25, (n) => setS({ highDays: Math.max(n, s.activeDays + 1) }), s.tierBasis === 'spend' || s.tierBasis === 'requests' ? 'Not used: usage tiers are based on ' + (s.tierBasis === 'spend' ? 'spend.' : 'AI requests.') : 'Average active days per month for the "High" usage tier' + (s.tierBasis === 'combined' ? ' (together with the requests median)' : '') + '. Under ' + AID.analysis.NON_ADOPTER_DAYS + ' day = non-adopter.'));
+  }
+
+  // Help text for the tier basis. The cut point (median) comes from the last analysis (ctx.tierCut).
+  function tierHelp(basis, ctx) {
+    const v = (x, unit) => AID.fmt.value(x, unit), cut = ctx && ctx.tierKey ? ctx.tierCut : null;
+    const non = ' Non-adopter = under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day per month.';
+    const fell = ctx && ctx.tierBasis !== basis ? ' The data has no ' + (basis === 'spend' ? 'spend' : 'request') + ' values, so active days are used.' : '';
+    if (basis === 'spend') return 'Low and High = the adopters split at the median of average ' + AID.M.spendDollars.label + ' per month in the after period' + (cut != null ? ' (' + v(cut, 'usd') + ')' : '') + '. Spend also depends on the model price, so a developer who uses expensive models ranks higher.' + non + fell;
+    if (basis === 'requests') return 'Low and High = the adopters split at the median of average ' + AID.M.totalRequests.label + ' per month in the after period' + (cut != null ? ' (' + v(cut, 'count') + ')' : '') + '. The model price does not change it.' + (AID.tool.key === 'both' ? ' Cursor and Copilot count requests differently, so the total of both tools is approximate.' : '') + non + fell;
+    if (basis === 'combined') return 'High = at least the high-usage threshold of active days and at least the median ' + AID.M.totalRequests.label + ' per month' + (cut != null ? ' (' + v(cut, 'count') + ')' : '') + ', both in the after period. Low = the other adopters. Thus light use every day and heavy use on a few days both count as Low.' + non + fell;
+    return 'Low and High from average active days per month in the after period, split at the high-usage threshold below. A day with one request counts as a full day.';
   }
 
   // Labels and notes for the outlier settings, from the cutoffs in dataset.caps (AID.data.applyOutliers).

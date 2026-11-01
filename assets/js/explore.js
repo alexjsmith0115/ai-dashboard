@@ -308,19 +308,19 @@ window.AID = window.AID || {};
 
   // ---------------- Usage distribution ----------------
   function usageDistCard(ctx, t) {
-    if (ctx.tierBasis === 'spend') return spendDistCard(ctx, t);
+    if (ctx.tierKey) return valueDistCard(ctx, t);
     const c = card({ id: 'x-dist', height: 260, help: 'c-usagedist', title: 'How much each developer uses AI', sub: 'Developers by average ' + AID.M.activeDays.label + ' per month in the after period.' });
     const bins = [];
     // One-day bins, so bin edges line up with the tier thresholds.
-    for (let i = 0; i <= 22; i++) bins.push({ lo: i, hi: i + 1, label: i ? String(i) : '<1', n: 0 });
+    for (let i = 0; i <= 22; i++) bins.push({ lo: i, hi: i + 1, label: i ? String(i) : '<1', n: 0, tiers: [0, 0, 0] });
     bins[bins.length - 1].hi = Infinity; bins[bins.length - 1].label = '22+';
     for (const d of ctx.devs) {
       const u = ctx.usageAfter(d);
       if (u == null) continue;
       const b = bins.find((x) => u >= x.lo && u < x.hi);
-      if (b) b.n++;
+      if (b) { b.n++; const ti = ctx.tierIndex(d); if (ti >= 0) b.tiers[ti]++; }
     }
-    const colorOf = (b) => t.tiers[b.lo >= ctx.hi ? 2 : b.lo >= AID.analysis.NON_ADOPTER_DAYS ? 1 : 0];
+    const colorOf = (b) => t.tiers[b.tiers.indexOf(Math.max(...b.tiers))];
     queueMicrotask(() => AID.charts.bars(c.canvas, {
       labels: bins.map((b) => b.label), values: bins.map((b) => b.n), colors: bins.map(colorOf), unit: 'count',
       valueFmt: (v) => (v ? String(v) : ''), tooltipLines: () => ['developers'],
@@ -330,27 +330,33 @@ window.AID = window.AID || {};
     return c.el;
   }
 
-  // Spend-based tiers: developers by average monthly spend in the after period. Each bar takes the tier of most of its developers
-  // (a bar that holds a cut point can mix two tiers).
-  function spendDistCard(ctx, t) {
-    const c = card({ id: 'x-dist', height: 260, help: 'c-usagedist', title: 'How much each developer uses AI', sub: 'Developers by average ' + AID.M.spendDollars.label + ' per month in the after period.' });
-    const devs = ctx.devs.map((d) => ({ d, v: ctx.spendAfter(d), ti: ctx.tierIndex(d) })).filter((x) => x.v != null);
-    if (!devs.length) { c.empty('No spend data in range.'); return c.el; }
+  // Spend-, request-, or combined-based tiers: developers by average monthly spend or AI requests in the after period. Each bar takes the
+  // tier of most of its developers (a bar that holds a cut point can mix two tiers; with the combined basis, active days also split a bar).
+  function valueDistCard(ctx, t) {
+    const spend = ctx.tierKey === 'spendDollars', m = AID.M[ctx.tierKey], unit = spend ? 'usd' : 'count';
+    const c = card({ id: 'x-dist', height: 260, help: 'c-usagedist', title: 'How much each developer uses AI', sub: 'Developers by average ' + m.label + ' per month in the after period.' });
+    const devs = ctx.devs.map((d) => ({ d, v: ctx.tierAfter(d), ti: ctx.tierIndex(d) })).filter((x) => x.v != null);
+    if (!devs.length) { c.empty('No ' + (spend ? 'spend' : 'request') + ' data in range.'); return c.el; }
     const sorted = devs.map((x) => x.v).sort((a, b) => a - b);
-    // 20 bins from the lowest spend to the 98th percentile; the last bin is open-ended.
+    // 20 bins from the lowest value to the 98th percentile; the last bin is open-ended. Step = a round number.
     const top = sorted[Math.floor(0.98 * (sorted.length - 1))];
-    const N = 20, w = Math.max(1, Math.ceil((top - sorted[0]) / N)), lo0 = Math.floor(sorted[0] / w) * w;
+    const N = 20, raw = Math.max(1, Math.ceil((top - sorted[0]) / N));
+    const mag = Math.pow(10, Math.floor(Math.log10(raw))), w = [1, 2, 5, 10].map((k) => k * mag).find((x) => x >= raw);
+    const lo0 = Math.floor(sorted[0] / w) * w, lab = (v) => (spend ? '$' : '') + F.value(v, 'count', { short: true });
     const bins = [];
-    for (let i = 0; i < N; i++) bins.push({ lo: i ? lo0 + i * w : -Infinity, hi: lo0 + (i + 1) * w, label: '$' + (lo0 + i * w), n: 0, tiers: [0, 0, 0] });
-    bins[N - 1].hi = Infinity; bins[N - 1].label = '$' + (lo0 + (N - 1) * w) + '+';
+    for (let i = 0; i < N; i++) bins.push({ lo: i ? lo0 + i * w : -Infinity, hi: lo0 + (i + 1) * w, label: lab(lo0 + i * w), n: 0, tiers: [0, 0, 0] });
+    bins[N - 1].hi = Infinity; bins[N - 1].label = lab(lo0 + (N - 1) * w) + '+';
     for (const x of devs) { const b = bins.find((y) => x.v >= y.lo && x.v < y.hi); if (b) { b.n++; if (x.ti >= 0) b.tiers[x.ti]++; } }
     const colorOf = (b) => t.tiers[b.tiers.indexOf(Math.max(...b.tiers))];
     queueMicrotask(() => AID.charts.bars(c.canvas, {
       labels: bins.map((b) => b.label), values: bins.map((b) => b.n), colors: bins.map(colorOf), unit: 'count',
       valueFmt: (v) => (v ? String(v) : ''), tooltipLines: () => ['developers'],
     }));
-    c.foot.textContent = 'X axis: average spend per month, in $' + w + ' steps. Color = usage tier: gray = non-adopter (under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day), then low / high = the other developers split at their median spend (' + F.value(ctx.spendCuts[0], 'usd') + ').';
-    c.setTable(() => table([{ label: 'Avg spend / mo', value: (b) => b.label, sortable: false }, { label: 'Developers', num: true, value: (b) => b.n }].concat(
+    const non = 'gray = non-adopter (under ' + AID.analysis.NON_ADOPTER_DAYS + ' active day), then ';
+    c.foot.textContent = 'X axis: average ' + (spend ? 'spend' : 'AI requests') + ' per month, in ' + lab(w) + ' steps. Color = the usage tier of most developers in the bar: ' + non + (ctx.tierBasis === 'combined'
+      ? 'high = ' + ctx.hi + '+ active days and at least the median requests (' + F.value(ctx.tierCut, 'count') + '), low = the other adopters.'
+      : 'low / high = the other developers split at their median (' + F.value(ctx.tierCut, unit) + ').');
+    c.setTable(() => table([{ label: spend ? 'Avg spend / mo' : 'Avg requests / mo', value: (b) => b.label, sortable: false }, { label: 'Developers', num: true, value: (b) => b.n }].concat(
       ctx.TIER_SHORT.map((name, i) => ({ label: name, num: true, value: (b) => b.tiers[i] }))), bins, { sortable: false }));
     return c.el;
   }
